@@ -2,10 +2,9 @@ SFP_DEMOS=balls conway fractals sdcard wolf
 FULL_DEMOS=2048 $(SFP_DEMOS)
 
 BUILD=Production
-LCH=led
 LOADER=ROM
 
-GPRBUILD=gprbuild -XBUILD=$(BUILD) -XLCH=$(LCH) -XLOADER=$(LOADER)
+GPRBUILD=gprbuild -XBUILD=$(BUILD) -XLOADER=$(LOADER)
 
 all: sfp full
 

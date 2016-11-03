@@ -9,9 +9,6 @@ project Common is
    type RTS_Type is ("ravenscar-sfp", "ravenscar-full");
    RTS : RTS_Type := External ("RTS", "ravenscar-sfp");
 
-   type LCH_Type is ("led", "lcd");
-   LCH : LCH_Type := external ("LCH", "led");
-
    for Languages use ("Ada");
    for Target use "arm-eabi";
    for Source_Dirs use ("gui");
@@ -19,20 +16,8 @@ project Common is
    case RTS is
       when "ravenscar-sfp" =>
          for Source_Dirs use Project'Source_Dirs & ("lch_sfp");
-         case LCH is
-            when "led" =>
-               for Source_Dirs use Project'Source_Dirs & ("lch_sfp/led");
-            when "lcd" =>
-               for Source_Dirs use Project'Source_Dirs & ("lch_sfp/lcd");
-         end case;
       when "ravenscar-full" =>
          for Source_Dirs use Project'Source_Dirs & ("lch_full");
-         case LCH is
-            when "led" =>
-               for Source_Dirs use Project'Source_Dirs & ("lch_full/led");
-            when "lcd" =>
-               for Source_Dirs use Project'Source_Dirs & ("lch_full/lcd");
-         end case;
    end case;
 
    package Compiler renames Common_Config.Compiler;
