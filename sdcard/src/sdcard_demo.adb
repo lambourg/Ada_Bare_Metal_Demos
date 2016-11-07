@@ -35,8 +35,8 @@ with STM32.Board;                use STM32.Board;
 with BMP_Fonts;
 
 with FAT_Filesystem;             use FAT_Filesystem;
-with FAT_Filesystem.Directories; use FAT_Filesystem.Directories;
-with FAT_Filesystem.Files;       use FAT_Filesystem.Files;
+--  with FAT_Filesystem.Directories; use FAT_Filesystem.Directories;
+--  with FAT_Filesystem.Files;       use FAT_Filesystem.Files;
 
 with Wav_Reader;
 
@@ -49,11 +49,14 @@ is
    Capacity      : Unsigned_64;
    Error_State   : Boolean := False;
 
-   FS            : FAT_Filesystem_Access;
+   FS_All        : aliased FAT_Filesystem.FAT_Filesystem;
+   FS            : constant FAT_Filesystem_Access := FS_All'Unchecked_Access;
 
    Status        : FAT_Filesystem.Status_Code;
 
    Y             : Natural := 0;
+
+   Current_Directory : FAT_Path := -"/";
 
    procedure Display_Current_Dir
      (Dir_Entry : Directory_Entry);
@@ -68,7 +71,7 @@ is
       Dir : Directory_Handle;
       E   : Directory_Entry;
    begin
-      if Open_Dir (Dir_Entry, Dir) /= OK then
+      if Open (Dir_Entry, Dir) /= OK then
          Draw_String
            (Display.Get_Hidden_Buffer (1),
             (0, Y),
@@ -84,29 +87,30 @@ is
 
       while not Error_State and then Read (Dir, E) = OK loop
          if not Is_Hidden (E)
-           and then -Name (E) /= "."
-           and then -Name (E) /= ".."
+           and then -Long_Name (E) /= "."
+           and then -Long_Name (E) /= ".."
          then
             Draw_String
               (Display.Get_Hidden_Buffer (1),
                (0, Y),
-               -Current_Directory & (-Name (E)),
+               -Current_Directory & (-Long_Name (E)),
                BMP_Fonts.Font12x12,
                (if Is_Subdirectory (E) then Grey else Black),
                Transparent);
             Y := Y + 16;
 
             if Is_Subdirectory (E) then
-               if -Name (E) /= "."
-                 and then -Name (E) /= ".."
+               if -Long_Name (E) /= "."
+                 and then -Long_Name (E) /= ".."
                then
-                  Change_Dir (Name (E));
+                  Current_Directory :=
+                    Current_Directory & Long_Name (E) & FAT_Path'(-"/");
                   Display_Current_Dir (E);
-                  Change_Dir (FAT_Name'(-".."));
+                  To_Parent (Current_Directory);
                end if;
             else
                declare
-                  N : constant String := -Name (E);
+                  N : constant String := -Long_Name (E);
                   F : File_Handle;
                   I : Wav_Reader.WAV_Info;
                   use Wav_Reader;
@@ -114,7 +118,7 @@ is
                   if N'Length > 4
                     and then N (N'Last - 3 .. N'Last) = ".wav"
                   then
-                     if File_Open (Dir_Entry, Name (E), Read_Mode, F) = OK then
+                     if Open (Dir_Entry, Long_Name (E), Read_Mode, F) = OK then
                         if Wav_Reader.Read_Header (F, I) /= OK then
                            Draw_String
                              (Display.Get_Hidden_Buffer (1),
@@ -155,7 +159,7 @@ is
                            Play (F, I);
                         end if;
 
-                        File_Close (F);
+                        Close (F);
                      end if;
                   end if;
                end;
@@ -225,7 +229,9 @@ begin
             end if;
          end loop;
 
-         FS := Open (SDCard_Device'Access, -"sdcard", Status);
+         Status := Open
+           (Controller => SDCard_Device'Access,
+            FS         => FS.all);
 
          if Status /= OK then
             Error_State := True;
@@ -274,21 +280,12 @@ begin
                Transparent);
             Y := Y + 25;
 
-            Change_Dir (FAT_Path'(-"/"));
+            Current_Directory := -"/";
 
             declare
-               Handle : Directory_Handle;
-               E      : Directory_Entry;
+               E : constant Directory_Entry := Root_Entry (FS);
             begin
-               if Open (Current_Directory, Handle) /= OK then
-                  Error_State := True;
-               end if;
-
-               while not Error_State and then Read (Handle, E) = OK loop
-                  Change_Dir (Name (E));
-                  Display_Current_Dir (E);
-               end loop;
-               Close (Handle);
+               Display_Current_Dir (E);
             end;
 
             Close (FS);

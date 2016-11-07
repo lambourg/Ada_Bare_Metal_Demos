@@ -19,16 +19,100 @@
 with Ada.Unchecked_Conversion;
 with FAT_Filesystem.Directories;
 
+with FAT_Filesystem.Files;
+
 package body FAT_Filesystem is
 
-   Volumes : array (1 .. MAX_VOLUMES) of aliased FAT_Filesystem;
-   --  Mounted volumes
+   The_File_Handles :
+     array (1 .. MAX_FILE_HANDLES) of aliased File_Handle_Record;
+   Last_File_Handle : Natural := 0;
 
-   Current_Path : FAT_Path := (Name => (1 => '/', others => ' '), Len => 1);
+   The_Dir_Handles :
+     array (1 .. MAX_DIR_HANDLES) of aliased Directory_Handle_Record;
+   Last_Dir_Handle : Natural := 0;
+
+   function Find_Free_Handle return Directory_Handle;
+   function Find_Free_Handle return File_Handle;
 
    procedure Initialize_FS
      (FS     : in out FAT_Filesystem;
       Status : out Status_Code);
+
+   ----------------------
+   -- Find_Free_Handle --
+   ----------------------
+
+   function Find_Free_Handle return Directory_Handle
+   is
+      Found : Boolean := False;
+
+   begin
+      for J in Last_Dir_Handle + 1 .. The_Dir_Handles'Last loop
+         if The_Dir_Handles (J).Is_Free then
+            The_Dir_Handles (J).Is_Free := False;
+            Last_Dir_Handle := J;
+
+            Found := True;
+            exit;
+         end if;
+      end loop;
+
+      if not Found then
+         for J in The_Dir_Handles'First .. Last_Dir_Handle loop
+            if The_Dir_Handles (J).Is_Free then
+               The_Dir_Handles (J).Is_Free := False;
+               Last_Dir_Handle := J;
+
+               Found := True;
+               exit;
+            end if;
+         end loop;
+      end if;
+
+      if not Found then
+         return null;
+      else
+         return The_Dir_Handles (Last_Dir_Handle)'Access;
+      end if;
+   end Find_Free_Handle;
+
+   ----------------------
+   -- Find_Free_Handle --
+   ----------------------
+
+   function Find_Free_Handle return File_Handle
+   is
+      Found : Boolean := False;
+
+   begin
+      for J in Last_File_Handle + 1 .. The_File_Handles'Last loop
+         if The_File_Handles (J).Is_Free then
+            The_File_Handles (J).Is_Free := False;
+            Last_File_Handle := J;
+
+            Found := True;
+            exit;
+         end if;
+      end loop;
+
+      if not Found then
+         for J in The_File_Handles'First .. Last_File_Handle loop
+            if The_File_Handles (J).Is_Free then
+               The_File_Handles (J).Is_Free := False;
+               Last_File_Handle := J;
+
+               Found := True;
+               exit;
+            end if;
+         end loop;
+      end if;
+
+      if not Found then
+         return null;
+      else
+         return The_File_Handles (Last_File_Handle)'Access;
+      end if;
+   end Find_Free_Handle;
 
    ---------
    -- "-" --
@@ -217,6 +301,35 @@ package body FAT_Filesystem is
         (Path.Len = 1 and then Path.Name (1) = '/');
    end Is_Root;
 
+   --------------
+   -- Basename --
+   --------------
+
+   function Basename (Path : FAT_Path) return FAT_Name
+   is
+      Last  : Natural := Path.Len;
+      First : Natural := Path.Name'First;
+
+   begin
+      if Path.Len = 0 then
+         return -"";
+      end if;
+
+      if Path.Name (Path.Len) = '/' then
+         Last := Path.Len - 1;
+      end if;
+
+      for J in reverse 1 .. Path.Len loop
+         if Path.Name (J) = '/' then
+            First := J + 1;
+
+            exit;
+         end if;
+      end loop;
+
+      return -Path.Name (First .. Last);
+   end Basename;
+
    ---------------
    -- To_Parent --
    ---------------
@@ -269,17 +382,15 @@ package body FAT_Filesystem is
 
    begin
       if Path.Len = 0 then
-         Path := Current_Path;
+         Path := -"/";
          return;
 
       elsif Path.Name (1) /= '/' then
-         Path := Current_Path & Path;
+         Path := -"/" & Path;
       end if;
 
       --  Preserve initial '/'
-      if Path.Name (1) = '/' then
-         Idx := 2;
-      end if;
+      Idx := 2;
 
       --  Below: Idx always points to the first character of a path element.
 
@@ -366,29 +477,6 @@ package body FAT_Filesystem is
       end if;
    end Normalize;
 
-   -----------------
-   -- Mount_Point --
-   -----------------
-
-   function Mount_Point (Path : FAT_Path) return FAT_Name
-   is
-      First : Natural;
-   begin
-      if Path.Len > 0 and then Path.Name (1) = '/' then
-         First := 2;
-      else
-         First := 1;
-      end if;
-
-      for J in First .. Path.Len loop
-         if Path.Name (J) = '/' then
-            return -Path.Name (First .. J - 1);
-         end if;
-      end loop;
-
-      return -Path.Name (First .. Path.Len);
-   end Mount_Point;
-
    -------------
    -- FS_Path --
    -------------
@@ -434,8 +522,7 @@ package body FAT_Filesystem is
 
    function Open
      (Controller  : Block_Driver_Ref;
-      Mount_Point : FAT_Name;
-      Status      : out Status_Code) return FAT_Filesystem_Access
+      FS          : out FAT_Filesystem) return Status_Code
    is
       subtype Word_Data is Block (0 .. 3);
       function To_Word is new
@@ -450,16 +537,12 @@ package body FAT_Filesystem is
    begin
       --  Let's read the MBR: located in the first block
       if not Controller.Read (0, Window) then
-         Status := Disk_Error;
-
-         return null;
+         return Disk_Error;
       end if;
 
       --  Check for the MBR magic number
       if Window (510 .. 511) /= (16#55#, 16#AA#) then
-         Status := No_MBR_Found;
-
-         return null;
+         return No_MBR_Found;
       end if;
 
       --  Now check the partition entries: 4 partitions for the MBR
@@ -480,17 +563,14 @@ package body FAT_Filesystem is
 
          elsif P = 4 then
             --  Last of the partition is not valid: there's no valid partition
-            Status := No_Partition_Found;
-
-            return null;
+            return No_Partition_Found;
          end if;
       end loop;
 
       return Open
               (Controller,
                LBA,
-               Mount_Point,
-               Status);
+               FS);
    end Open;
 
    ----------
@@ -500,64 +580,24 @@ package body FAT_Filesystem is
    function Open
      (Controller  : HAL.Block_Drivers.Block_Driver_Ref;
       LBA         : Unsigned_32;
-      Mount_Point : FAT_Name;
-      Status      : out Status_Code) return FAT_Filesystem_Access
+      FS          : out FAT_Filesystem) return Status_Code
    is
-      Ret    : FAT_Filesystem_Access;
-
+      Status : Status_Code;
    begin
-      --  Find a free Volume handle
-      Ret := null;
+      FS.Mounted     := True;
+      FS.Controller  := Controller;
+      FS.LBA         := LBA;
 
-      for J in Volumes'Range loop
-         if not Volumes (J).Mounted then
-            Ret := Volumes (J)'Access;
-            exit;
-         end if;
-      end loop;
-
-      if Ret = null then
-         Status := Too_Many_Open_Files;
-         return Null_FAT_Volume;
-      end if;
-
-      Ret.Mounted     := True;
-      Ret.Controller  := Controller;
-      Ret.Mount_Point := Mount_Point;
-      Ret.LBA         := LBA;
-
-      Initialize_FS (Ret.all, Status);
+      Initialize_FS (FS, Status);
 
       if Status /= OK then
-         Ret.Mounted := False;
+         FS.Mounted := False;
 
-         return null;
+         return Status;
       end if;
 
-      return Ret;
+      return OK;
    end Open;
-
-   ---------------------
-   -- Get_Mount_Point --
-   ---------------------
-
-   function Get_Mount_Point
-     (Mount_Point : FAT_Name;
-      FS          : out FAT_Filesystem_Access) return Status_Code
-   is
-   begin
-      --  Look for a mount point
-      for J in Volumes'Range loop
-         if Volumes (J).Mounted
-           and then Volumes (J).Mount_Point = Mount_Point
-         then
-            FS := Volumes (J)'Access;
-            return OK;
-         end if;
-      end loop;
-
-      return Not_Mounted;
-   end Get_Mount_Point;
 
    -------------------
    -- Initialize_FS --
@@ -660,114 +700,33 @@ package body FAT_Filesystem is
    end Ensure_Block;
 
    ----------------
-   -- Change_Dir --
+   -- Root_Entry --
    ----------------
 
-   function Change_Dir
-     (Dir_Name : FAT_Path) return Boolean
+   function Root_Entry (FS : FAT_Filesystem_Access) return Directory_Entry
    is
    begin
-      if Dir_Name.Len = 0 then
-         return True;
-      end if;
-
-      if Dir_Name = Current_Path then
-         return True;
-      end if;
-
-      if Dir_Name.Name (1) = '/' then
-         Current_Path := Dir_Name;
-      else
-         Append (Current_Path, Dir_Name);
-      end if;
-
-      Normalize (Current_Path, Ensure_Dir => True);
-
-      return True;
-   end Change_Dir;
-
-   ----------------
-   -- Change_Dir --
-   ----------------
-
-   function Change_Dir (Dir_Name : FAT_Name) return Boolean
-   is
-      Full : constant FAT_Path := Current_Path & Dir_Name;
-   begin
-      return Change_Dir (Full);
-   end Change_Dir;
-
-   ----------------
-   -- Change_Dir --
-   ----------------
-
-   procedure Change_Dir (Dir_Name : FAT_Path)
-   is
-      Dead : Boolean with Unreferenced;
-   begin
-      Dead := Change_Dir (Dir_Name);
-   end Change_Dir;
-
-   ----------------
-   -- Change_Dir --
-   ----------------
-
-   procedure Change_Dir (Dir_Name : FAT_Name)
-   is
-      Dead : Boolean with Unreferenced;
-   begin
-      Dead := Change_Dir (Dir_Name);
-   end Change_Dir;
-
-   -----------------------
-   -- Current_Directory --
-   -----------------------
-
-   function Current_Directory return FAT_Path
-   is
-   begin
-      return Current_Path;
-   end Current_Directory;
+      return Directories.Root_Entry (FS);
+   end Root_Entry;
 
    ----------
    -- Open --
    ----------
 
    function Open
-     (Path   : FAT_Path;
+     (FS     : FAT_Filesystem_Access;
+      Path   : FAT_Path;
       Handle : out Directory_Handle) return Status_Code
    is
-      E    : Directories.Directory_Entry;
+      E    : Directory_Entry;
       Full : FAT_Path := Path;
-      Mnt  : FAT_Name;
-      Rel  : FAT_Path;
       Ret  : Status_Code;
-      FS   : FAT_Filesystem_Access := null;
 
    begin
       Normalize (Full);
 
-      if Is_Root (Full) then
-         Handle := (Kind                 => Handle_Mount_Point,
-                    Current_Volume_Index => -1);
-         return OK;
-      end if;
-
-      Mnt := Mount_Point (Path);
-      Rel := FS_Path (Path);
-
-      for J in Volumes'Range loop
-         if Volumes (J).Mounted and then Volumes (J).Mount_Point = Mnt then
-            FS := Volumes (J)'Access;
-         end if;
-      end loop;
-
-      if FS = null then
-         return No_Such_Path;
-      end if;
-
-      if not Is_Root (Rel) then
-         Ret := Directories.Find (FS, Rel, E);
+      if not Is_Root (Path) then
+         Ret := Directories.Find (FS, Path, E);
 
          if Ret /= OK then
             return Ret;
@@ -777,43 +736,53 @@ package body FAT_Filesystem is
          E := Directories.Root_Entry (FS);
       end if;
 
-      if not Directories.Is_Subdirectory (E) then
-         return No_Such_File;
-      end if;
-
-      return Directories.Open_Dir (E, Handle);
+      return Open (E, Handle);
    end Open;
 
    ----------
-   -- Read --
+   -- Open --
    ----------
 
-   function Read (Dir    : in out Directory_Handle;
-                  DEntry : out Directories.Directory_Entry)
-                  return Status_Code
+   function Open
+     (D_Entry : Directory_Entry;
+      Handle  : out Directory_Handle) return Status_Code
    is
    begin
-      case Dir.Kind is
-         when Handle_Mount_Point =>
-            if Dir.Current_Volume_Index < 0 then
-               Dir.Current_Volume_Index := Volumes'First - 1;
-            end if;
+      if not Is_Subdirectory (D_Entry) then
+         return No_Such_File;
+      end if;
 
-            for J in Dir.Current_Volume_Index + 1 .. Volumes'Last loop
-               if Volumes (J).Mounted then
-                  DEntry := Directories.Root_Entry (Volumes (J)'Access);
-                  Dir.Current_Volume_Index := J;
+      Handle := Find_Free_Handle;
 
-                  return OK;
-               end if;
-            end loop;
+      if Handle = null then
+         return Too_Many_Open_Files;
+      end if;
 
-            return No_Such_File;
+      Handle.FS            := D_Entry.FS;
+      Handle.Current_Index := 0;
 
-         when Handle_FAT =>
-            return Directories.Read_Dir (Dir, DEntry);
-      end case;
-   end Read;
+      if D_Entry.Is_Root then
+         if D_Entry.FS.Version = FAT16 then
+            Handle.Start_Cluster   := 0;
+            Handle.Current_Block   :=
+              Unsigned_32 (D_Entry.FS.Reserved_Blocks) +
+              D_Entry.FS.FAT_Table_Size_In_Blocks *
+                Unsigned_32 (D_Entry.FS.Number_Of_FATs);
+         else
+            Handle.Start_Cluster := D_Entry.FS.Root_Dir_Cluster;
+            Handle.Current_Block :=
+              D_Entry.FS.Cluster_To_Block (D_Entry.FS.Root_Dir_Cluster);
+         end if;
+      else
+         Handle.Start_Cluster := D_Entry.Start_Cluster;
+         Handle.Current_Block :=
+           D_Entry.FS.Cluster_To_Block (D_Entry.Start_Cluster);
+      end if;
+
+      Handle.Current_Cluster := Handle.Start_Cluster;
+
+      return OK;
+   end Open;
 
    -----------
    -- Reset --
@@ -822,23 +791,204 @@ package body FAT_Filesystem is
    procedure Reset (Dir : in out Directory_Handle)
    is
    begin
-      case Dir.Kind is
-         when Handle_Mount_Point =>
-            Dir.Current_Volume_Index := -1;
-         when Handle_FAT =>
-            Directories.Reset_Dir (Dir);
-      end case;
+      Dir.Current_Block   := Cluster_To_Block (Dir.FS.all, Dir.Start_Cluster);
+      Dir.Current_Cluster := Dir.Start_Cluster;
+      Dir.Current_Index   := 0;
    end Reset;
+
+   ----------
+   -- Read --
+   ----------
+
+   function Read
+     (Dir    : in out Directory_Handle;
+      DEntry : out Directory_Entry)
+      return Status_Code
+   is (Directories.Read (Dir, DEntry));
+
+   -----------
+   -- Close --
+   -----------
 
    procedure Close (Dir : in out Directory_Handle)
    is
    begin
-      case Dir.Kind is
-         when Handle_Mount_Point =>
-            Dir.Current_Volume_Index := -1;
-         when Handle_FAT =>
-            Directories.Close_Dir (Dir);
-      end case;
+      Dir.FS              := null;
+      Dir.Current_Index   := 0;
+      Dir.Start_Cluster   := 0;
+      Dir.Current_Cluster := 0;
+      Dir.Current_Block   := 0;
+
+      for H in The_Dir_Handles'Range loop
+         if The_Dir_Handles (H)'Access = Dir then
+            The_Dir_Handles (H).Is_Free := True;
+            Dir := null;
+            exit;
+         end if;
+      end loop;
+   end Close;
+
+   ----------
+   -- Open --
+   ----------
+
+   function Open
+     (FS     : FAT_Filesystem_Access;
+      Path   : FAT_Path;
+      Mode   : File_Mode;
+      Handle : out File_Handle) return Status_Code
+   is
+      Parent_E : Directory_Entry;
+      Status   : Status_Code;
+
+   begin
+      if Is_Root (Path) then
+         return No_Such_File;
+      end if;
+
+      Status := Directories.Find (FS, Parent (Path), Parent_E);
+
+      if Status /= OK then
+         return No_Such_File;
+      end if;
+
+      return Open (Parent_E, Basename (Path), Mode, Handle);
+   end Open;
+
+   ----------
+   -- Open --
+   ----------
+
+   function Open
+     (Parent : Directory_Entry;
+      Name   : FAT_Name;
+      Mode   : File_Mode;
+      Handle : out File_Handle) return Status_Code
+   is
+   begin
+      Handle := Find_Free_Handle;
+
+      if Handle = null then
+         return Too_Many_Open_Files;
+      end if;
+
+      return Files.Open (Parent, Name, Mode, Handle);
+   end Open;
+
+   ----------
+   -- Size --
+   ----------
+
+   function Size (Handle : File_Handle) return File_Size
+   is
+   begin
+      return Files.Size (Handle);
+   end Size;
+
+   ----------
+   -- Mode --
+   ----------
+
+   function Mode (Handle : File_Handle) return File_Mode
+   is
+   begin
+      return Handle.Mode;
+   end Mode;
+
+   ----------
+   -- Read --
+   ----------
+
+   function Read
+     (Handle : in out File_Handle;
+      Addr   : System.Address;
+      Length : File_Size) return File_Size
+   is
+   begin
+      return Files.Read (Handle, Addr, Length);
+   end Read;
+
+   ----------
+   -- Read --
+   ----------
+
+   procedure Generic_Read
+     (Handle : in out File_Handle;
+      Value  : out T)
+   is
+      Ret : File_Size with Unreferenced;
+   begin
+      Ret := Files.Read (Handle, Value'Address, T'Size / 8);
+   end Generic_Read;
+
+   ------------
+   -- Offset --
+   ------------
+
+   function Offset
+     (Handle : in out File_Handle) return File_Size
+   is
+   begin
+      return Handle.Bytes_Total;
+   end Offset;
+
+   ----------------
+   -- File_Write --
+   ----------------
+
+   function Write
+     (File   : in out File_Handle;
+      Addr   : System.Address;
+      Length : File_Size) return Status_Code
+   is
+   begin
+      return Files.Write (File, Addr, Length);
+   end Write;
+
+   ----------------
+   -- File_Flush --
+   ----------------
+
+   function Flush
+     (File : in out File_Handle) return Status_Code
+   is
+   begin
+      return Files.Flush (File);
+   end Flush;
+
+   ---------------
+   -- File_Seek --
+   ---------------
+
+   function Seek
+     (File   : in out File_Handle;
+      Amount : in out File_Size;
+      Origin : Seek_Mode) return Status_Code
+   is
+      pragma Unreferenced (File, Amount, Origin);
+   begin
+      pragma Compile_Time_Warning (True, "Not implemented yet");
+      return Internal_Error;
+   end Seek;
+
+   ----------------
+   -- File_Close --
+   ----------------
+
+   procedure Close (File : in out File_Handle)
+   is
+   begin
+      Files.Close (File);
+
+      for J in The_File_Handles'Range loop
+         if The_File_Handles (J)'Access = File then
+            The_File_Handles (J).Is_Free := True;
+
+            exit;
+         end if;
+      end loop;
+
+      File := null;
    end Close;
 
    -------------
@@ -862,7 +1012,8 @@ package body FAT_Filesystem is
       end if;
 
       Block_Num :=
-        FS.FAT_Addr + Unsigned_32 (Cluster) * 4 / FS.Bytes_Per_Block;
+        FS.FAT_Addr +
+          Unsigned_32 (Cluster) * 4 / Unsigned_32 (FS.Bytes_Per_Block);
 
       if Block_Num /= FS.FAT_Block then
          FS.FAT_Block := Block_Num;
@@ -874,7 +1025,7 @@ package body FAT_Filesystem is
       end if;
 
       Idx :=
-        Natural (Unsigned_32 ((Cluster) * 4) mod FS.Bytes_Per_Block);
+        Natural (File_Size ((Cluster) * 4) mod FS.Bytes_Per_Block);
 
       return To_Cluster (FS.FAT_Window (Idx .. Idx + 3)) and 16#0FFF_FFFF#;
    end Get_FAT;
@@ -902,7 +1053,8 @@ package body FAT_Filesystem is
       end if;
 
       Block_Num :=
-        FS.FAT_Addr + Unsigned_32 (Cluster) * 4 / FS.Bytes_Per_Block;
+        FS.FAT_Addr +
+          Unsigned_32 (Cluster) * 4 / Unsigned_32 (FS.Bytes_Per_Block);
 
       if Block_Num /= FS.FAT_Block then
          FS.FAT_Block := Block_Num;
@@ -913,7 +1065,7 @@ package body FAT_Filesystem is
          end if;
       end if;
 
-      Idx := Natural (Unsigned_32 (Cluster * 4) mod FS.Bytes_Per_Block);
+      Idx := Natural (File_Size (Cluster * 4) mod FS.Bytes_Per_Block);
 
       FS.FAT_Window (Idx .. Idx + 3) := From_Cluster (Value);
 

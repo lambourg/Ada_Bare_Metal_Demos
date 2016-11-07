@@ -16,20 +16,30 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Ada.Unchecked_Conversion;
 with FAT_Filesystem;             use FAT_Filesystem;
+with FAT_Filesystem.Directories; use FAT_Filesystem.Directories;
 
 package body FAT_Filesystem.Files is
+
+   type File_Data is array (File_Size range <>) of Interfaces.Unsigned_8;
+
+   function Read
+     (Handle : File_Handle;
+      Data   : out File_Data) return File_Size;
+
+   function Write
+     (File   : File_Handle;
+      Data   : File_Data) return Status_Code;
 
    ---------------
    -- File_Open --
    ---------------
 
-   function File_Open
+   function Open
      (Parent : Directory_Entry;
       Name   : FAT_Name;
       Mode   : File_Mode;
-      File   : out File_Handle) return Status_Code
+      File   : File_Handle) return Status_Code
    is
       Node : Directory_Entry;
       Ret  : Status_Code;
@@ -58,8 +68,8 @@ package body FAT_Filesystem.Files is
          end if;
       end if;
 
-      File :=
-        (Is_Open         => True,
+      File.all :=
+        (Is_Free         => False,
          FS              => Get_FS (Node),
          Mode            => Mode,
          Current_Cluster => Get_Start_Cluster (Node),
@@ -71,55 +81,55 @@ package body FAT_Filesystem.Files is
          Parent          => Parent);
 
       return OK;
-   end File_Open;
+   end Open;
 
    ---------------
    -- File_Read --
    ---------------
 
-   function File_Read
-     (Handle : in out File_Handle;
+   function Read
+     (Handle : File_Handle;
       Addr   : System.Address;
-      Length : Natural) return Integer
+      Length : File_Size) return File_Size
    is
       D : File_Data (1 .. Length) with Import, Address => Addr;
    begin
-      return File_Read (Handle, D);
-   end File_Read;
+      return Read (Handle, D);
+   end Read;
 
    ---------------
    -- File_Read --
    ---------------
 
-   function File_Read
-     (Handle : in out File_Handle;
-      Data : out File_Data)
-      return Integer
+   function Read
+     (Handle : File_Handle;
+      Data   : out File_Data)
+      return File_Size
    is
-      Idx         : Natural;
+      Idx         : File_Size;
       --  Index from the current block
 
-      Data_Length : Unsigned_32 := Data'Length;
+      Data_Length : File_Size := Data'Length;
       --  The total length to read
 
-      Data_Idx    : Natural := Data'First;
+      Data_Idx    : File_Size := Data'First;
       --  Index into the data array of the next bytes to read
 
       Block_Addr  : Unsigned_32;
       --  The actual address of the block to read
 
-      R_Length    : Natural;
+      R_Length    : File_Size;
       --  The size of the data to read in one operation
 
       Status      : Status_Code with Unreferenced;
 
    begin
-      if not Handle.Is_Open or Handle.Mode = Write_Mode then
-         return -1;
+      if Handle.Is_Free or Handle.Mode = Write_Mode then
+         return 0;
       end if;
 
       if Handle.Mode = Read_Write_Mode then
-         Status := File_Flush (Handle);
+         Status := Flush (Handle);
       end if;
 
       --  Clamp the number of data to read to the size of the file
@@ -133,7 +143,7 @@ package body FAT_Filesystem.Files is
       end if;
 
       loop
-         Idx := Natural (Handle.Bytes_Total mod Handle.FS.Bytes_Per_Block);
+         Idx := Handle.Bytes_Total mod Handle.FS.Bytes_Per_Block;
          Block_Addr := Handle.FS.Cluster_To_Block (Handle.Current_Cluster) +
            Handle.Current_Block;
 
@@ -146,17 +156,20 @@ package body FAT_Filesystem.Files is
                --  User data is aligned on words: we can directly perform DMA
                --  transfers to it
                R_Length :=
-                 Natural (Data_Length / Handle.FS.Bytes_Per_Block) *
-                 Natural (Handle.FS.Bytes_Per_Block);
+                 (Data_Length / Handle.FS.Bytes_Per_Block) *
+                 Handle.FS.Bytes_Per_Block;
 
+               --  ??? Is this a limitation to use Byte_Array here ? (indexed
+               --  on Natural instead of indexed on File_Size).
                if not Handle.FS.Controller.Read
-                 (Block_Addr, Data (Data_Idx .. Data_Idx + R_Length - 1))
+                 (Block_Addr,
+                  HAL.Byte_Array (Data (Data_Idx .. Data_Idx + R_Length - 1)))
                then
                   if Data_Idx = Data'First then
                      --  not a single byte read, report an error
-                     return -1;
+                     return 0;
                   else
-                     return Integer (Data_Idx - Data'First);
+                     return Data_Idx - Data'First;
                   end if;
                end if;
 
@@ -172,20 +185,21 @@ package body FAT_Filesystem.Files is
                then
                   if Data_Idx = Data'First then
                      --  not a single byte read, report an error
-                     return -1;
+                     return 0;
                   else
-                     return Integer (Data_Idx - Data'First);
+                     return Data_Idx - Data'First;
                   end if;
                end if;
 
-               Data (Data_Idx .. Data_Idx + R_Length - 1) := Handle.Buffer;
+               Data (Data_Idx .. Data_Idx + R_Length - 1) :=
+                 File_Data (Handle.Buffer);
             end if;
 
             Data_Idx := Data_Idx + R_Length;
             Handle.Current_Block := Handle.Current_Block + 1;
-            Handle.Bytes_Total := Handle.Bytes_Total + Unsigned_32 (R_Length);
+            Handle.Bytes_Total := Handle.Bytes_Total + R_Length;
             Handle.Buffer_Level := 0;
-            Data_Length := Data_Length - Unsigned_32 (R_Length);
+            Data_Length := Data_Length - R_Length;
 
          else
             --  Not aligned on a block, or less than 512 bytes to read
@@ -201,26 +215,25 @@ package body FAT_Filesystem.Files is
                then
                   if Data_Idx = Data'First then
                      --  not a single byte read, report an error
-                     return -1;
+                     return 0;
                   else
-                     return Integer (Data_Idx - Data'First);
+                     return Data_Idx - Data'First;
                   end if;
                end if;
 
                Handle.Buffer_Level := Handle.Buffer'Length;
             end if;
 
-            R_Length := Natural
-              (Unsigned_32'Min (Handle.Buffer'Length - Unsigned_32 (Idx),
-                                Data_Length));
-            Data (Data_Idx .. Data_Idx + R_Length - 1) :=
-              Handle.Buffer (Idx .. Idx + R_Length - 1);
+            R_Length := File_Size'Min (Handle.Buffer'Length - Idx,
+                                       Data_Length);
+            Data (Data_Idx .. Data_Idx + R_Length - 1) := File_Data
+              (Handle.Buffer (Natural (Idx) .. Natural (Idx + R_Length - 1)));
 
             Data_Idx           := Data_Idx + R_Length;
-            Handle.Bytes_Total := Handle.Bytes_Total + Unsigned_32 (R_Length);
-            Data_Length        := Data_Length - Unsigned_32 (R_Length);
+            Handle.Bytes_Total := Handle.Bytes_Total + R_Length;
+            Data_Length        := Data_Length - R_Length;
 
-            if Idx + R_Length = Natural (Handle.FS.Bytes_Per_Block) then
+            if Idx + R_Length = Handle.FS.Bytes_Per_Block then
                Handle.Current_Block := Handle.Current_Block + 1;
                Handle.Buffer_Level  := 0;
             end if;
@@ -238,47 +251,40 @@ package body FAT_Filesystem.Files is
          exit when Handle.FS.Is_Last_Cluster (Handle.Current_Cluster);
       end loop;
 
-      return Integer (Data_Idx - Data'First);
-   end File_Read;
+      return Data_Idx - Data'First;
+   end Read;
 
-   ------------------
-   -- Generic_Read --
-   ------------------
+   -----------
+   -- Write --
+   -----------
 
-   procedure Generic_Read
-     (File : in out File_Handle;
-      Data : out T)
+   function Write
+     (File   : File_Handle;
+      Addr   : System.Address;
+      Length : File_Size) return Status_Code
    is
-      subtype B is File_Data (1 .. T'Size / 8);
-      function To_T is new Ada.Unchecked_Conversion (B, T);
-      Buf : B;
-      Len : Natural;
+      Data : aliased File_Data (1 .. Length) with Address => Addr;
    begin
-      Len := File_Read (File, Buf);
-      if Len = B'Length then
-         Data := To_T (Buf);
-      else
-         raise Constraint_Error with "Not enough data in file";
-      end if;
-   end Generic_Read;
+      return Write (File, Data);
+   end Write;
 
-   ----------------
-   -- File_Write --
-   ----------------
+   -----------
+   -- Write --
+   -----------
 
-   function File_Write
-     (File   : in out File_Handle;
+   function Write
+     (File   : File_Handle;
       Data   : File_Data) return Status_Code
    is
-      procedure Inc_Size (Amount : Natural);
+      procedure Inc_Size (Amount : File_Size);
 
-      Data_Length : Natural := Data'Length;
+      Data_Length : File_Size := Data'Length;
       --  The total length to read
 
-      Data_Idx    : Natural := Data'First;
+      Data_Idx    : File_Size := Data'First;
       --  Index into the data array of the next bytes to write
 
-      N_Blocks    : Unsigned_32;
+      N_Blocks    : File_Size;
       --  The number of blocks to read at once
 
       Block_Addr  : Unsigned_32;
@@ -291,18 +297,18 @@ package body FAT_Filesystem.Files is
       -- Inc_Size --
       --------------
 
-      procedure Inc_Size (Amount : Natural)
+      procedure Inc_Size (Amount : File_Size)
       is
       begin
          Data_Idx := Data_Idx + Amount;
-         File.Bytes_Total  := File.Bytes_Total + Unsigned_32 (Amount);
+         File.Bytes_Total  := File.Bytes_Total + Amount;
          Data_Length       := Data_Length - Amount;
 
          Set_Size (File.D_Entry, File.Bytes_Total);
       end Inc_Size;
 
    begin
-      if not File.Is_Open or File.Mode = Read_Mode then
+      if File.Is_Free or File.Mode = Read_Mode then
          return Access_Denied;
       end if;
 
@@ -317,10 +323,10 @@ package body FAT_Filesystem.Files is
                                   Data'Length);
 
          File.Buffer (File.Buffer_Level .. File.Buffer_Level + W_Length - 1) :=
-           Data (Data_Idx .. Data_Idx + W_Length - 1);
+           Block (Data (Data_Idx .. Data_Idx + File_Size (W_Length) - 1));
 
          File.Buffer_Level := File.Buffer_Level + W_Length;
-         Inc_Size (W_Length);
+         Inc_Size (File_Size (W_Length));
 
          if File.Buffer_Level > File.Buffer'Last then
             Block_Addr := File.FS.Cluster_To_Block (File.Current_Cluster) +
@@ -346,14 +352,13 @@ package body FAT_Filesystem.Files is
 
       --  At this point, the buffer is empty and a new block is ready to be
       --  written. Check if we can write several blocks at once
-      while Unsigned_32 (Data_Length) >= File.FS.Bytes_Per_Block loop
+      while Data_Length >= File.FS.Bytes_Per_Block loop
          --  we have at least one full block to write.
 
          --  Determine the number of full blocks we need to write:
-         N_Blocks := Unsigned_32'Min
-           (Unsigned_32 (File.FS.Blocks_Per_Cluster) -
-                File.Current_Block,
-            Unsigned_32 (Data_Length) / File.FS.Bytes_Per_Block);
+         N_Blocks := File_Size'Min
+           (File_Size (File.FS.Blocks_Per_Cluster) - File_Size (File.Current_Block),
+            Data_Length / File.FS.Bytes_Per_Block);
 
          --  Writing all blocks in one operation
          W_Length := Natural (N_Blocks * File.FS.Bytes_Per_Block);
@@ -364,12 +369,12 @@ package body FAT_Filesystem.Files is
          --  Fill directly the user data
          if not File.FS.Controller.Write
            (Block_Addr,
-            Data (Data_Idx .. Data_Idx + W_Length - 1))
+            Block (Data (Data_Idx .. Data_Idx + File_Size (W_Length) - 1)))
          then
             return Disk_Error;
          end if;
 
-         Inc_Size (W_Length);
+         Inc_Size (File_Size (W_Length));
 
          if File.Current_Block = Unsigned_32 (File.FS.Blocks_Per_Cluster) then
             File.Current_Block := 0;
@@ -379,22 +384,22 @@ package body FAT_Filesystem.Files is
 
       --  Now everything that remains is smaller than a block. Let's fill the
       --  buffer with this data
-      W_Length := Data'Last - Data_Idx + 1;
-      File.Buffer (0 .. W_Length - 1) := Data (Data_Idx .. Data'Last);
+      W_Length := Natural (Data'Last - Data_Idx + 1);
+      File.Buffer (0 .. W_Length - 1) := Block (Data (Data_Idx .. Data'Last));
 
-      Inc_Size (W_Length);
+      Inc_Size (File_Size (W_Length));
 
       File.Buffer_Level := W_Length;
 
       return OK;
-   end File_Write;
+   end Write;
 
-   ----------------
-   -- File_Flush --
-   ----------------
+   -----------
+   -- Flush --
+   -----------
 
-   function File_Flush
-     (File : in out File_Handle)
+   function Flush
+     (File : File_Handle)
       return Status_Code
    is
       Block_Addr  : Unsigned_32;
@@ -414,31 +419,17 @@ package body FAT_Filesystem.Files is
       end if;
 
       return OK;
-   end File_Flush;
+   end Flush;
 
-   ----------------
-   -- File_Close --
-   ----------------
+   -----------
+   -- Close --
+   -----------
 
-   procedure File_Close (File : in out File_Handle) is
+   procedure Close (File : in out File_Handle) is
       Status : Status_Code with Unreferenced;
    begin
       Status := Update_Entry (File.Parent, File.D_Entry);
-      Status := File_Flush (File);
-      File.Is_Open := False;
-   end File_Close;
-
-   ------------------
-   -- To_File_Data --
-   ------------------
-
-   function To_File_Data (S : String) return File_Data
-   is
-      subtype S_Type is String (S'Range);
-      subtype D_Type is File_Data (0 .. S'Length - 1);
-      function To_Data is new Ada.Unchecked_Conversion (S_Type, D_Type);
-   begin
-      return To_Data (S);
-   end To_File_Data;
+      Status := Flush (File);
+   end Close;
 
 end FAT_Filesystem.Files;

@@ -16,14 +16,11 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
+with System;
 with Interfaces;        use Interfaces;
 with HAL.Block_Drivers; use HAL.Block_Drivers;
 
-limited with FAT_Filesystem.Directories;
-
 package FAT_Filesystem is
-
-   Max_Handles_Reached : exception;
 
    MAX_VOLUMES         : constant := 1;
    --  Maximum number of mounted volumes
@@ -33,6 +30,12 @@ package FAT_Filesystem is
 
    MAX_PATH_LENGTH     : constant := 1024;
    --  Maximum size of a path name length
+
+   MAX_FILE_HANDLES    : constant := 2;
+   --  Maximum number of handles opened simultaneously.
+
+   MAX_DIR_HANDLES     : constant := 5;
+   --  Maximum number of handles opened simultaneously.
 
    type Cluster_Type is mod 2 ** 32 with Size => 32;
    subtype Valid_Cluster is Cluster_Type range 2 .. 16#0FFF_FFFF#;
@@ -62,17 +65,40 @@ package FAT_Filesystem is
       Not_Enabled, --  The volume has no work area
       No_Filesystem, --  The volume is not a FAT volume
       Locked,
-      Too_Many_Open_Files, --  Number of opened files > Max
+      Too_Many_Open_Files, --  All available handles are used
       Invalid_Parameter,
       No_MBR_Found,
       No_Partition_Found,
       No_More_Entries);
 
+   type File_Mode is (Read_Mode, Write_Mode, Read_Write_Mode);
+   type Seek_Mode is
+     (
+      --  Seek from the beginning of the file, forward
+      From_Start,
+      --  Seek from the end of the file, backward
+      From_End,
+      --  Seek from the current position, forward
+      Forward,
+      --  Seek from the current position, backward
+      Backward);
+
+   type FAT_Name is private;
+
+   type FAT_Filesystem is limited private;
+   type FAT_Filesystem_Access is access all FAT_Filesystem;
+
+   type Directory_Handle is private;
+   type Directory_Entry is private;
+
+   type File_Handle is private;
+
+   type File_Size is new Interfaces.Unsigned_32;
+   --  FAT Filesystem does not support files >= 4GB (e.g. 2**32)
+
    -----------------------
    -- PATH MANIPULATION --
    -----------------------
-
-   type FAT_Name is private;
 
    function "-" (Name : FAT_Name) return String;
 
@@ -108,79 +134,130 @@ package FAT_Filesystem is
 
    procedure To_Parent (Path : in out FAT_Path);
    function Parent (Path : FAT_Path) return FAT_Path;
+   function Basename (Path : FAT_Path) return FAT_Name;
 
    procedure Normalize (Path       : in out FAT_Path;
                         Ensure_Dir : Boolean := False);
 
-   function Mount_Point (Path : FAT_Path) return FAT_Name;
    function FS_Path (Path : FAT_Path) return FAT_Path;
 
    ------------------------
    -- DIRECTORY HANDLING --
    ------------------------
 
-   function Change_Dir (Dir_Name : FAT_Path) return Boolean;
-   function Change_Dir (Dir_Name : FAT_Name) return Boolean;
-   procedure Change_Dir (Dir_Name : FAT_Path);
-   procedure Change_Dir (Dir_Name : FAT_Name);
-
-   function Current_Directory return FAT_Path;
-
-   type Directory_Handle is private;
-
    function Open
-     (Path   : FAT_Path;
+     (FS     : FAT_Filesystem_Access;
+      Path   : FAT_Path;
       Handle : out Directory_Handle) return Status_Code;
+   function Open
+     (D_Entry : Directory_Entry;
+      Handle  : out Directory_Handle) return Status_Code
+     with Pre => Is_Subdirectory (D_Entry);
    function Read (Dir    : in out Directory_Handle;
-                  DEntry : out Directories.Directory_Entry)
+                  DEntry : out Directory_Entry)
                   return Status_Code;
    procedure Reset (Dir : in out Directory_Handle);
    procedure Close (Dir : in out Directory_Handle);
+
+   function Root_Entry (FS : FAT_Filesystem_Access) return Directory_Entry;
+   function Long_Name (E : Directory_Entry) return FAT_Name;
+   function Short_Name (E : Directory_Entry) return FAT_Name;
+   function Is_Read_Only (E : Directory_Entry) return Boolean;
+   function Is_Hidden (E : Directory_Entry) return Boolean;
+   function Is_System_File (E : Directory_Entry) return Boolean;
+   function Is_Subdirectory (E : Directory_Entry) return Boolean;
+   function Is_Archive (E : Directory_Entry) return Boolean;
+   function Get_Start_Cluster (E : Directory_Entry) return Cluster_Type;
+   function Get_Size (E : Directory_Entry) return File_Size;
+   function Get_FS (E : Directory_Entry) return FAT_Filesystem_Access;
 
 --     function Is_Directory (Path : FAT_Path) return Boolean;
 --     function Is_File (Path : FAT_Path) return Boolean;
 --     function Is_File_Or_Directory (Path : FAT_Path) return Boolean;
 
+   -------------------
+   -- FILE HANDLING --
+   -------------------
+
+   function Open
+     (FS     : FAT_Filesystem_Access;
+      Path   : FAT_Path;
+      Mode   : File_Mode;
+      Handle : out File_Handle) return Status_Code;
+
+   function Open
+     (Parent : Directory_Entry;
+      Name   : FAT_Name;
+      Mode   : File_Mode;
+      Handle : out File_Handle) return Status_Code
+     with Pre => Is_Subdirectory (Parent);
+
+   function Size (Handle : File_Handle) return File_Size;
+
+   function Mode (Handle : File_Handle) return File_Mode;
+
+   function Read
+     (Handle : in out File_Handle;
+      Addr   : System.Address;
+      Length : File_Size) return File_Size
+     with Pre => Mode (Handle) /= Write_Mode;
+   --  read data from file.
+   --  @return number of bytes read (at most Data'Length), or -1 on error.
+
+   generic
+      type T is private;
+   procedure Generic_Read
+     (Handle : in out File_Handle;
+      Value  : out T);
+
+   function Offset
+     (Handle : in out File_Handle) return File_Size;
+   --  Current index within the file
+
+   function Write
+     (File   : in out File_Handle;
+      Addr   : System.Address;
+      Length : File_Size) return Status_Code
+     with
+       Pre => Mode (File) = Write_Mode or else Mode (File) = Read_Write_Mode;
+   --  write to file
+   --  @return number of bytes written (at most Data'Length), or -1 on error.
+
+   function Flush
+     (File : in out File_Handle) return Status_Code;
+   --  force writing file to disk at this very moment (slow!)
+
+   function Seek
+     (File   : in out File_Handle;
+      Amount : in out File_Size;
+      Origin : Seek_Mode) return Status_Code;
+   --  Moves the current file position to "Amount", according to the Origin
+   --  parameter. If the command makes the file pointer move outside of the
+   --  file, it stops at the file boundary and returns the actual amount of
+   --  bytes moved.
+
+   procedure Close (File : in out File_Handle);
+   --  invalidates the handle, and ensures that
+   --  everything is flushed to the disk
+
    --------------------
    -- FAT FILESYSTEM --
    --------------------
 
-   type FAT_Filesystem is limited private;
-   type FAT_Filesystem_Access is access all FAT_Filesystem;
-
-   Null_FAT_Volume : constant FAT_Filesystem_Access;
-
    function Open
      (Controller  : HAL.Block_Drivers.Block_Driver_Ref;
-      Mount_Point : FAT_Name;
-      Status      : out Status_Code) return FAT_Filesystem_Access;
+      FS          : out FAT_Filesystem) return Status_Code;
+   --  ??? Deport this function to some MBR supporting package
    --  Search the media for a valid FAT partition and opens it.
    --  If the media contains several partitions, the first one is used
 
    function Open
      (Controller  : HAL.Block_Drivers.Block_Driver_Ref;
       LBA         : Unsigned_32;
-      Mount_Point : FAT_Name;
-      Status      : out Status_Code) return FAT_Filesystem_Access;
+      FS          : out FAT_Filesystem) return Status_Code;
    --  Opens a FAT partition at the given LBA
 
-   function Get_Mount_Point
-     (Mount_Point : FAT_Name;
-      FS          : out FAT_Filesystem_Access) return Status_Code;
-
-   function Get_Mount_Point
-     (FS : not null FAT_Filesystem_Access) return FAT_Name;
-
    procedure Close (FS : FAT_Filesystem_Access);
-
-   type FAT_Directory_Entry_Attribute is record
-      Read_Only    : Boolean;
-      Hidden       : Boolean;
-      System_File  : Boolean;
-      Volume_Label : Boolean;
-      Subdirectory : Boolean;
-      Archive      : Boolean;
-   end record with Size => 8, Pack;
 
    -----------------------
    -- FAT FS PROPERTIES --
@@ -197,11 +274,11 @@ package FAT_Filesystem is
    --  The OEM Name of the Volume. Different from the Volume Label.
 
    function Bytes_Per_Block
-     (FS : FAT_Filesystem) return Unsigned_32;
+     (FS : FAT_Filesystem) return File_Size;
    function Blocks_Per_Cluster
      (FS : FAT_Filesystem) return Unsigned_8;
    function Bytes_Per_Cluster
-     (FS : FAT_Filesystem) return Unsigned_32;
+     (FS : FAT_Filesystem) return File_Size;
    function Reserved_Blocks
      (FS : FAT_Filesystem) return Unsigned_16;
    function Number_Of_FATs
@@ -426,10 +503,6 @@ private
      (FS       : in out FAT_Filesystem;
       Previous : Cluster_Type) return Cluster_Type;
 
-   function Get_Mount_Point
-     (FS : not null FAT_Filesystem_Access) return FAT_Name
-   is (FS.Mount_Point);
-
    --------------------------------------------------
    -- Inlined implementations of utility functions --
    --------------------------------------------------
@@ -443,16 +516,16 @@ private
    is (FS.Disk_Parameters.OEM_Name);
 
    function Bytes_Per_Block
-     (FS : FAT_Filesystem) return Unsigned_32
-   is (Unsigned_32 (FS.Disk_Parameters.Block_Size_In_Bytes));
+     (FS : FAT_Filesystem) return File_Size
+   is (File_Size (FS.Disk_Parameters.Block_Size_In_Bytes));
 
    function Blocks_Per_Cluster
      (FS : FAT_Filesystem) return Unsigned_8
    is (FS.Disk_Parameters.Blocks_Per_Cluster);
 
    function Bytes_Per_Cluster
-     (FS : FAT_Filesystem) return Unsigned_32
-   is (Unsigned_32 (FS.Blocks_Per_Cluster) * FS.Bytes_Per_Block);
+     (FS : FAT_Filesystem) return File_Size
+   is (File_Size (FS.Blocks_Per_Cluster) * FS.Bytes_Per_Block);
 
    function Reserved_Blocks
      (FS : FAT_Filesystem) return Unsigned_16
@@ -532,27 +605,69 @@ private
      (FS : FAT_Filesystem) return Cluster_Type
    is (FS.FSInfo.Last_Allocated_Cluster);
 
-   Null_FAT_Volume : constant FAT_Filesystem_Access := null;
-
    type Entry_Index is new Unsigned_16;
    Null_Index : Entry_Index := 16#FFFF#;
 
-   type Handle_Kind is
-     (Handle_Mount_Point,
-      Handle_FAT);
-
-   type Directory_Handle (Kind : Handle_Kind := Handle_FAT) is record
-      case Kind is
-         when Handle_Mount_Point =>
-            Current_Volume_Index : Integer := 0;
-         when Handle_FAT =>
-            FS                   : FAT_Filesystem_Access;
-            Current_Index        : Entry_Index;
-            Start_Cluster        : Cluster_Type;
-            Current_Cluster      : Cluster_Type;
-            Current_Block        : Unsigned_32;
-      end case;
+   type Directory_Handle_Record is record
+      Is_Free         : Boolean := True;
+      FS              : FAT_Filesystem_Access;
+      Current_Index   : Entry_Index;
+      Start_Cluster   : Cluster_Type;
+      Current_Cluster : Cluster_Type;
+      Current_Block   : Unsigned_32;
    end record;
+
+   type Directory_Handle is access all Directory_Handle_Record;
+
+   type FAT_Directory_Entry_Attribute is record
+      Read_Only    : Boolean;
+      Hidden       : Boolean;
+      System_File  : Boolean;
+      Volume_Label : Boolean;
+      Subdirectory : Boolean;
+      Archive      : Boolean;
+   end record with Size => 8, Pack;
+
+   type Directory_Entry is record
+      FS            : FAT_Filesystem_Access;
+      L_Name        : FAT_Name;
+      S_Name        : String (1 .. 8);
+      S_Name_Ext    : String (1 .. 3);
+      Attributes    : FAT_Directory_Entry_Attribute;
+      Start_Cluster : Cluster_Type; --  The content of this entry
+      Size          : File_Size;
+
+      Index         : Entry_Index;
+      --  Index of the FAT_Directory_Intry within Parent's content
+
+      Is_Root       : Boolean := False;
+      --  Is it the root directory ?
+
+      Is_Dirty      : Boolean := False;
+      --  Whether changes need to be written on disk
+   end record;
+
+   type File_Handle_Record is record
+      Is_Free         : Boolean := True;
+      FS              : FAT_Filesystem_Access;
+      Mode            : File_Mode := Read_Mode;
+      --  The current cluster from which we read or write
+      Current_Cluster : Cluster_Type := 0;
+      --  The current block from which we read or write
+      Current_Block   : Unsigned_32 := 0;
+      --  Buffer with the content of the current block
+      Buffer          : Block (0 .. 511);
+      --  How much data in Buffer is meaningful
+      Buffer_Level    : Natural := 0;
+      --  The actual file index
+      Bytes_Total     : File_Size := 0;
+      --  The associated directory entry
+      D_Entry         : Directory_Entry;
+      --  The parent's directory directory entry
+      Parent          : Directory_Entry;
+   end record;
+
+   type File_Handle is access all File_Handle_Record;
 
    --  Type definition for implementation details, make them visible to all
    --  children of the package
@@ -566,7 +681,7 @@ private
       Time       : Unsigned_16;
       Date       : Unsigned_16;
       Cluster_L  : Unsigned_16;
-      Size       : Unsigned_32;
+      Size       : File_Size;
    end record with Size => 32 * 8;
 
    for FAT_Directory_Entry use record
@@ -617,5 +732,38 @@ private
    --  Returns the number of VFAT Entries needed to encode 'Name'
    --  There's 13 characters in each entry, and we need Name.Len + 2 characters
    --  for the trailing ASCII.NUL + 0xFFFF sequence.
+
+   function Long_Name (E : Directory_Entry) return FAT_Name
+   is (if E.L_Name.Len > 0 then E.L_Name else Short_Name (E));
+
+   function Short_Name (E : Directory_Entry) return FAT_Name
+   is (-(Trim (E.S_Name) &
+         (if E.S_Name_Ext /= "   "
+          then "." & E.S_Name_Ext
+          else "")));
+
+   function Is_Read_Only (E : Directory_Entry) return Boolean
+   is (E.Attributes.Read_Only);
+
+   function Is_Hidden (E : Directory_Entry) return Boolean
+   is (E.Attributes.Hidden);
+
+   function Is_System_File (E : Directory_Entry) return Boolean
+   is (E.Attributes.System_File);
+
+   function Is_Subdirectory (E : Directory_Entry) return Boolean
+   is (E.Attributes.Subdirectory);
+
+   function Is_Archive (E : Directory_Entry) return Boolean
+   is (E.Attributes.Archive);
+
+   function Get_Start_Cluster (E : Directory_Entry) return Cluster_Type
+   is (E.Start_Cluster);
+
+   function Get_Size (E : Directory_Entry) return File_Size
+   is (E.Size);
+
+   function Get_FS (E : Directory_Entry) return FAT_Filesystem_Access
+   is (E.FS);
 
 end FAT_Filesystem;

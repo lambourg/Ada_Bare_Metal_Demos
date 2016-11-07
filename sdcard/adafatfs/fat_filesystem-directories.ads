@@ -16,9 +16,7 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-package FAT_Filesystem.Directories is
-
-   type Directory_Entry is private;
+private package FAT_Filesystem.Directories is
 
    function Find
      (FS     : FAT_Filesystem_Access;
@@ -37,21 +35,14 @@ package FAT_Filesystem.Directories is
 
    function Root_Entry (FS : FAT_Filesystem_Access) return Directory_Entry;
 
-   function Open_Root_Directory
-     (FS  : FAT_Filesystem_Access;
-      Dir : out Directory_Handle) return Status_Code;
+   function Read
+     (Dir    : in out Directory_Handle;
+      DEntry : out Directory_Entry) return Status_Code;
 
-   function Open_Dir
-     (E   : Directory_Entry;
-      Dir : out Directory_Handle) return Status_Code
-   with Pre => Is_Subdirectory (E);
-
-   procedure Reset_Dir (Dir : in out Directory_Handle);
-
-   procedure Close_Dir (Dir : in out Directory_Handle);
-
-   function Read_Dir (Dir    : in out Directory_Handle;
-                      DEntry : out Directory_Entry) return Status_Code;
+   function Next_Entry
+     (Dir    : in out Directory_Handle;
+      DEntry : out    FAT_Directory_Entry) return Status_Code;
+   --  Returns the next entry for Directory_Handle.
 
    -------------------------------------
    -- Operations on directory entries --
@@ -84,78 +75,15 @@ package FAT_Filesystem.Directories is
    -- Directory_Entry properties --
    --------------------------------
 
-   function Name (E : Directory_Entry) return FAT_Name;
-
-   function Short_Name (E : Directory_Entry) return FAT_Name;
-
-   function Is_Read_Only (E : Directory_Entry) return Boolean;
-
-   function Is_Hidden (E : Directory_Entry) return Boolean;
-
-   function Is_System_File (E : Directory_Entry) return Boolean;
-
-   function Is_Subdirectory (E : Directory_Entry) return Boolean;
-
-   function Is_Archive (E : Directory_Entry) return Boolean;
-
-   function Get_Start_Cluster (E : Directory_Entry) return Cluster_Type;
-
-   function Get_Size (E : Directory_Entry) return Unsigned_32;
-
-   function Get_FS (E : Directory_Entry) return FAT_Filesystem_Access;
-
    procedure Set_Size
      (E    : in out Directory_Entry;
-      Size : Unsigned_32);
+      Size : File_Size);
 
    function Update_Entry
      (Parent : Directory_Entry;
       Value  : in out Directory_Entry) return Status_Code;
 
 private
-
-   type Directory_Entry is record
-      FS            : FAT_Filesystem_Access;
-      L_Name        : FAT_Name;
-      S_Name        : String (1 .. 8);
-      S_Name_Ext    : String (1 .. 3);
-      Attributes    : FAT_Directory_Entry_Attribute;
-      Start_Cluster : Cluster_Type; --  The content of this entry
-      Size          : Unsigned_32;
-
-      Index         : Entry_Index;
-      --  Index of the FAT_Directory_Intry within Parent's content
-
-      Is_Root       : Boolean := False;
-      --  Is it the root directory ?
-
-      Is_Dirty      : Boolean := False;
-      --  Whether changes need to be written on disk
-   end record;
-
-   function Is_Read_Only (E : Directory_Entry) return Boolean
-   is (E.Attributes.Read_Only);
-
-   function Is_Hidden (E : Directory_Entry) return Boolean
-   is (E.Attributes.Hidden);
-
-   function Is_System_File (E : Directory_Entry) return Boolean
-   is (E.Attributes.System_File);
-
-   function Is_Subdirectory (E : Directory_Entry) return Boolean
-   is (E.Attributes.Subdirectory);
-
-   function Is_Archive (E : Directory_Entry) return Boolean
-   is (E.Attributes.Archive);
-
-   function Get_Start_Cluster (E : Directory_Entry) return Cluster_Type
-   is (E.Start_Cluster);
-
-   function Get_Size (E : Directory_Entry) return Unsigned_32
-   is (E.Size);
-
-   function Get_FS (E : Directory_Entry) return FAT_Filesystem_Access
-   is (E.FS);
 
    ---------------------------
    -- Low_Level subprograms --

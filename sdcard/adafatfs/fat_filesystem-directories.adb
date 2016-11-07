@@ -26,11 +26,6 @@ package body FAT_Filesystem.Directories is
    function To_Data is new Ada.Unchecked_Conversion
      (VFAT_Directory_Entry, Entry_Data);
 
-   function Next_Entry
-     (Dir    : in out Directory_Handle;
-      DEntry : out    FAT_Directory_Entry) return Status_Code;
-   --  Returns the next entry for Directory_Handle.
-
    function Find_Empty_Entry_Sequence
      (Parent      : in out Directory_Handle;
       Num_Entries : Natural) return Entry_Index;
@@ -43,7 +38,7 @@ package body FAT_Filesystem.Directories is
 
    procedure Set_Size
      (E    : in out Directory_Entry;
-      Size : Unsigned_32)
+      Size : File_Size)
    is
    begin
       if E.Size /= Size then
@@ -67,7 +62,7 @@ package body FAT_Filesystem.Directories is
       Status  : Status_Code;
 
    begin
-      Reset_Dir (Tmp);
+      Reset (Tmp);
 
       loop
          Status := Read (Tmp, DEntry);
@@ -76,7 +71,7 @@ package body FAT_Filesystem.Directories is
             return No_Such_File;
          end if;
 
-         if Name (DEntry) = Filename
+         if Long_Name (DEntry) = Filename
            or else Short_Name (DEntry) = Filename
          then
             return OK;
@@ -96,13 +91,13 @@ package body FAT_Filesystem.Directories is
       Handle : Directory_Handle;
       Ret    : Status_Code;
    begin
-      Ret := Open_Dir (Parent, Handle);
+      Ret := Open (Parent, Handle);
       if Ret /= OK then
          return Ret;
       end if;
 
       Ret := Find (Handle, Filename, DEntry);
-      Close_Dir (Handle);
+      Close (Handle);
 
       return Ret;
    end Find;
@@ -122,7 +117,7 @@ package body FAT_Filesystem.Directories is
       Current : Directory_Handle;
 
    begin
-      Status := Open_Root_Directory (FS, Current);
+      Status := Open (FS, -"/", Current);
 
       if Status /= OK then
          return Status;
@@ -160,7 +155,7 @@ package body FAT_Filesystem.Directories is
                return No_Such_Path;
             end if;
 
-            Status := Open_Dir (DEntry, Current);
+            Status := Open (DEntry, Current);
 
             if Status /= OK then
                return Status;
@@ -187,7 +182,7 @@ package body FAT_Filesystem.Directories is
 
       Ent       : FAT_Directory_Entry;
       Cluster   : Cluster_Type := Parent.Start_Cluster;
-      Offset    : Unsigned_32 := Unsigned_32 (Value.Index) * 32;
+      Offset    : File_Size := File_Size (Value.Index) * 32;
       Block_Off : Natural;
       Block     : Unsigned_32;
       Ret       : Status_Code;
@@ -202,7 +197,7 @@ package body FAT_Filesystem.Directories is
          Offset := Offset - Parent.FS.Bytes_Per_Cluster;
       end loop;
 
-      Block     := Offset / Parent.FS.Bytes_Per_Block;
+      Block     := Unsigned_32 (Offset / Parent.FS.Bytes_Per_Block);
       Block_Off := Natural (Offset mod Parent.FS.Bytes_Per_Block);
 
       Ret := Parent.FS.Ensure_Block
@@ -235,86 +230,11 @@ package body FAT_Filesystem.Directories is
               Attributes    => (Subdirectory => True,
                                 others       => False),
               Is_Root       => True,
-              L_Name        => Get_Mount_Point (FS),
+              L_Name        => -"",
               Start_Cluster => FS.Root_Dir_Cluster,
               Index         => 0,
               others        => <>);
    end Root_Entry;
-
-   -------------------------
-   -- Open_Root_Directory --
-   -------------------------
-
-   function Open_Root_Directory
-     (FS  : FAT_Filesystem_Access;
-      Dir : out Directory_Handle) return Status_Code
-   is
-
-   begin
-      if FS.Version = FAT16 then
-         Dir.Start_Cluster   := 0;
-         Dir.Current_Block   :=
-           Unsigned_32 (FS.Reserved_Blocks) +
-           FS.FAT_Table_Size_In_Blocks *
-             Unsigned_32 (FS.Number_Of_FATs);
-      else
-         Dir.Start_Cluster := FS.Root_Dir_Cluster;
-         Dir.Current_Block := FS.Cluster_To_Block (FS.Root_Dir_Cluster);
-      end if;
-
-      Dir.FS := FS;
-      Dir.Current_Cluster := Dir.Start_Cluster;
-      Dir.Current_Index   := 0;
-
-      return OK;
-   end Open_Root_Directory;
-
-   ----------
-   -- Open --
-   ----------
-
-   function Open_Dir
-     (E   : Directory_Entry;
-      Dir : out Directory_Handle) return Status_Code
-   is
-   begin
-      if E.Is_Root then
-         return Open_Root_Directory (E.FS, Dir);
-      else
-         Dir.Start_Cluster := E.Start_Cluster;
-         Dir.FS := E.FS;
-
-         Reset (Dir);
-
-         return OK;
-      end if;
-   end Open_Dir;
-
-   -----------
-   -- Reset --
-   -----------
-
-   procedure Reset_Dir (Dir : in out Directory_Handle)
-   is
-   begin
-      Dir.Current_Block   := Cluster_To_Block (Dir.FS.all, Dir.Start_Cluster);
-      Dir.Current_Cluster := Dir.Start_Cluster;
-      Dir.Current_Index   := 0;
-   end Reset_Dir;
-
-   -----------
-   -- Close --
-   -----------
-
-   procedure Close_Dir (Dir : in out Directory_Handle)
-   is
-   begin
-      Dir.FS              := null;
-      Dir.Current_Index   := 0;
-      Dir.Start_Cluster   := 0;
-      Dir.Current_Cluster := 0;
-      Dir.Current_Block   := 0;
-   end Close_Dir;
 
    ----------------
    -- Next_Entry --
@@ -337,7 +257,7 @@ package body FAT_Filesystem.Directories is
       end if;
 
       Block_Off := Natural
-        ((Unsigned_32 (Dir.Current_Index) * 32) mod Dir.FS.Bytes_Per_Block);
+        (File_Size (Dir.Current_Index * 32) mod Dir.FS.Bytes_Per_Block);
 
       --  Check if we're on a block boundare
       if Unsigned_32 (Block_Off) = 0 and then Dir.Current_Index /= 0 then
@@ -385,7 +305,7 @@ package body FAT_Filesystem.Directories is
    -- Read --
    ----------
 
-   function Read_Dir
+   function Read
      (Dir    : in out Directory_Handle;
       DEntry : out Directory_Entry) return Status_Code
    is
@@ -448,7 +368,7 @@ package body FAT_Filesystem.Directories is
       L_Name_First := L_Name'Last + 1;
 
       loop
-         Ret := Next_Entry (Dir, D_Entry);
+         Ret := Directories.Next_Entry (Dir, D_Entry);
 
          if Ret /= OK then
             return Ret;
@@ -524,7 +444,7 @@ package body FAT_Filesystem.Directories is
             return OK;
          end if;
       end loop;
-   end Read_Dir;
+   end Read;
 
    -------------------
    -- Create_Subdir --
@@ -542,7 +462,7 @@ package body FAT_Filesystem.Directories is
       Dot_Dot      : FAT_Directory_Entry;
 
    begin
-      Ret := Open_Dir (Dir, Handle);
+      Ret := Open (Dir, Handle);
 
       if Ret /= OK then
          return Ret;
@@ -613,7 +533,7 @@ package body FAT_Filesystem.Directories is
       Handle.FS.Window (64 .. 95) := (others => 0);
       Ret := Handle.FS.Write_Window;
 
-      Close_Dir (Handle);
+      Close (Handle);
 
       return Ret;
    end Create_Subdir;
@@ -631,7 +551,7 @@ package body FAT_Filesystem.Directories is
       Ret          : Status_Code;
 
    begin
-      Ret := Open_Dir (Dir, Handle);
+      Ret := Open (Dir, Handle);
 
       if Ret /= OK then
          return Ret;
@@ -648,7 +568,7 @@ package body FAT_Filesystem.Directories is
                            Archive      => True),
          E             => New_File);
 
-      Close_Dir (Handle);
+      Close (Handle);
 
       if Ret /= OK then
          return Ret;
@@ -671,16 +591,16 @@ package body FAT_Filesystem.Directories is
       Ret       : Status_Code;
 
    begin
-      Ret := Open_Dir (Dir, Handle);
+      Ret := Open (Dir, Handle);
 
       if Ret /= OK then
          return Ret;
       end if;
 
-      while Read_Dir (Handle, Ent) = OK loop
-         if -Name (Ent) = "." then
+      while Read (Handle, Ent) = OK loop
+         if -Long_Name (Ent) = "." then
             null;
-         elsif -Name (Ent) = ".." then
+         elsif -Long_Name (Ent) = ".." then
             Parent := Ent;
          elsif not Recursive then
             return Non_Empty_Directory;
@@ -692,14 +612,14 @@ package body FAT_Filesystem.Directories is
             end if;
 
             if Ret /= OK then
-               Close_Dir (Handle);
+               Close (Handle);
 
                return Ret;
             end if;
          end if;
       end loop;
 
-      Close_Dir (Handle);
+      Close (Handle);
 
       --  Free the clusters associated to the subdirectory
       Ret := Delete_Entry (Parent, Dir);
@@ -738,15 +658,15 @@ package body FAT_Filesystem.Directories is
       end loop;
 
       --  Mark the parent's entry as deleted
-      Ret := Open_Dir (Dir, Handle);
+      Ret := Open (Dir, Handle);
       if Ret /= OK then
          return Ret;
       end if;
 
-      while Read_Dir (Handle, Child_Ent) = OK loop
-         if Name (Child_Ent) = Name (Ent) then
+      while Read (Handle, Child_Ent) = OK loop
+         if Long_Name (Child_Ent) = Long_Name (Ent) then
             Block_Off := Natural
-              ((Unsigned_32 (Handle.Current_Index - 1) * 32)
+              ((File_Size (Handle.Current_Index - 1) * 32)
                mod Dir.FS.Bytes_Per_Block);
             --  Mark the entry as deleted: first basename character set to
             --  16#E5#
@@ -757,7 +677,7 @@ package body FAT_Filesystem.Directories is
          end if;
       end loop;
 
-      Close_Dir (Handle);
+      Close (Handle);
 
       return Ret;
    end Delete_Entry;
@@ -769,10 +689,10 @@ package body FAT_Filesystem.Directories is
    function Adjust_Clusters
      (Ent : Directory_Entry) return Status_Code
    is
-      B_Per_Cluster : constant Unsigned_32 :=
-                        Unsigned_32 (Ent.FS.Blocks_Per_Cluster) *
+      B_Per_Cluster : constant File_Size :=
+                        File_Size (Ent.FS.Blocks_Per_Cluster) *
                           Ent.FS.Bytes_Per_Block;
-      Size          : Unsigned_32 := Ent.Size;
+      Size          : File_Size := Ent.Size;
       Current       : Cluster_Type := Ent.Start_Cluster;
       Next          : Cluster_Type;
       Ret           : Status_Code := OK;
@@ -808,6 +728,7 @@ package body FAT_Filesystem.Directories is
 
       return Ret;
    end Adjust_Clusters;
+
    -------------------------------
    -- Find_Empty_Entry_Sequence --
    -------------------------------
@@ -822,7 +743,7 @@ package body FAT_Filesystem.Directories is
       Ret      : Entry_Index;
 
    begin
-      Reset_Dir (Parent);
+      Reset (Parent);
 
       loop
          Status := Next_Entry (Parent, D_Entry);
@@ -1131,7 +1052,7 @@ package body FAT_Filesystem.Directories is
       To_Short_Name (Name, SName, SExt);
 
       --  Look for an already existing entry, and compute the short name
-      Reset_Dir (Parent);
+      Reset (Parent);
 
       loop
          Status := Read (Parent, DEntry);
@@ -1144,7 +1065,7 @@ package body FAT_Filesystem.Directories is
 
          --  Can't create a new entry as an old entry with the same long name
          --  already exists
-         if Directories.Name (DEntry) = Name then
+         if Long_Name (DEntry) = Name then
             return Already_Exists;
          end if;
 
@@ -1155,7 +1076,7 @@ package body FAT_Filesystem.Directories is
          end if;
       end loop;
 
-      Reset_Dir (Parent);
+      Reset (Parent);
 
       --  Look for an already existing entry that has been deleted and so that
       --  we could reuse
@@ -1242,12 +1163,12 @@ package body FAT_Filesystem.Directories is
                Size       => 0);
 
             --  Now write down the new entries
-            Reset_Dir (Parent);
+            Reset (Parent);
 
             --  Retrieve the block number relative to the first block of the
             --  directory content
-            N_Blocks :=
-              Unsigned_32 (Index) * 32 / Parent.FS.Bytes_Per_Block;
+            N_Blocks := Unsigned_32
+              (File_Size (Index) * 32 / Parent.FS.Bytes_Per_Block);
 
             --  Check if we need to change cluster
             while N_Blocks >=
@@ -1278,7 +1199,7 @@ package body FAT_Filesystem.Directories is
                end if;
 
                Block_Off := Natural
-                 ((Unsigned_32 (Index) * 32) mod Parent.FS.Bytes_Per_Block);
+                 ((File_Size (Index) * 32) mod Parent.FS.Bytes_Per_Block);
 
                if J > 1 and then Block_Off = 0 then
                   Status := Parent.FS.Write_Window;
@@ -1312,37 +1233,11 @@ package body FAT_Filesystem.Directories is
             end loop;
 
             Status := Parent.FS.Write_Window;
-            Reset_Dir (Parent);
+            Reset (Parent);
          end;
       end if;
 
       return Status;
    end Allocate_Entry;
-
-   ----------
-   -- Name --
-   ----------
-
-   function Name (E : Directory_Entry) return FAT_Name
-   is
-   begin
-      if E.L_Name.Len > 0 then
-         return E.L_Name;
-      else
-         return Short_Name (E);
-      end if;
-   end Name;
-
-   ----------------
-   -- Short_Name --
-   ----------------
-
-   function Short_Name (E : Directory_Entry) return FAT_Name is
-   begin
-      return -(Trim (E.S_Name) &
-               (if E.S_Name_Ext /= "   "
-                  then "." & E.S_Name_Ext
-                  else ""));
-   end Short_Name;
 
 end FAT_Filesystem.Directories;
