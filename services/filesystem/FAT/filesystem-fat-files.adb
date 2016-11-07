@@ -425,7 +425,8 @@ package body Filesystem.FAT.Files is
    -- Close --
    -----------
 
-   procedure Close (File : in out File_Handle) is
+   procedure Close (File : in out File_Handle)
+   is
       Status : Status_Code with Unreferenced;
    begin
       Status := Update_Entry (File.Parent, File.D_Entry);

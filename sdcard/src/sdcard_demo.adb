@@ -35,6 +35,7 @@ with STM32.Board;                use STM32.Board;
 with BMP_Fonts;
 
 with Filesystem;                 use Filesystem;
+with Filesystem.MBR;             use Filesystem.MBR;
 with Filesystem.FAT;             use Filesystem.FAT;
 with Wav_Reader;
 
@@ -47,6 +48,7 @@ is
    Capacity      : Unsigned_64;
    Error_State   : Boolean := False;
 
+   MBR           : Master_Boot_Record;
    FS_All        : aliased Filesystem.FAT.FAT_Filesystem;
    FS            : constant FAT_Filesystem_Access := FS_All'Unchecked_Access;
 
@@ -227,40 +229,53 @@ begin
             end if;
          end loop;
 
-         Status := Open
-           (Controller => SDCard_Device'Access,
-            FS         => FS.all);
+         Status := Read (SDCard_Device'Access, MBR);
 
          if Status /= OK then
             Error_State := True;
+            Draw_String
+              (Display.Get_Hidden_Buffer (1),
+               (0, Y),
+               "Not an MBR partition system",
+               BMP_Fonts.Font12x12,
+               HAL.Bitmap.Red,
+               Transparent);
+            Display.Update_Layer (1, True);
+            Y := Y + 13;
 
-            if Status = No_MBR_Found then
-               Draw_String
-                 (Display.Get_Hidden_Buffer (1),
-                  (0, Y),
-                  "Not an MBR partition system",
-                  BMP_Fonts.Font12x12,
-                  HAL.Bitmap.Red,
-                  Transparent);
-               Display.Update_Layer (1, True);
-               Y := Y + 13;
+         else
+            for P in Partition_Number'Range loop
+               Status := No_Partition_Found;
 
-            elsif Status = No_Partition_Found then
+               if Valid (MBR, P) then
+                  Draw_String
+                    (Display.Get_Hidden_Buffer (1),
+                     (0, Y),
+                     "Found Valid partition: " &
+                       Partition_Type'Image (Get_Type (MBR, P)),
+                     BMP_Fonts.Font12x12,
+                     HAL.Bitmap.Dark_Green,
+                     Transparent);
+                  Display.Update_Layer (1, True);
+                  Y := Y + 13;
+
+                  Status := Open
+                    (SDCard_Device'Access,
+                     LBA (MBR, P),
+                     FS.all);
+                  exit;
+               end if;
+            end loop;
+         end if;
+
+         if Status /= OK then
+            if not Error_State then
+               Error_State := True;
+
                Draw_String
                  (Display.Get_Hidden_Buffer (1),
                   (0, Y),
                   "No valid partition found",
-                  BMP_Fonts.Font12x12,
-                  HAL.Bitmap.Red,
-                  Transparent);
-               Display.Update_Layer (1, True);
-               Y := Y + 13;
-
-            else
-               Draw_String
-                 (Display.Get_Hidden_Buffer (1),
-                  (0, Y),
-                  "Error reading the card: " & Status'Img,
                   BMP_Fonts.Font12x12,
                   HAL.Bitmap.Red,
                   Transparent);

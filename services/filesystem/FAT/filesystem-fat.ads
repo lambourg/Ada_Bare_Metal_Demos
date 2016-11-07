@@ -246,13 +246,6 @@ package Filesystem.FAT is
 
    function Open
      (Controller  : HAL.Block_Drivers.Block_Driver_Ref;
-      FS          : out FAT_Filesystem) return Status_Code;
-   --  ??? Deport this function to some MBR supporting package
-   --  Search the media for a valid FAT partition and opens it.
-   --  If the media contains several partitions, the first one is used
-
-   function Open
-     (Controller  : HAL.Block_Drivers.Block_Driver_Ref;
       LBA         : Unsigned_32;
       FS          : out FAT_Filesystem) return Status_Code;
    --  Opens a FAT partition at the given LBA
