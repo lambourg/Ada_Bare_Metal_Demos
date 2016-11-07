@@ -16,10 +16,10 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with FAT_Filesystem;             use FAT_Filesystem;
-with FAT_Filesystem.Directories; use FAT_Filesystem.Directories;
+with Filesystem.FAT;             use Filesystem.FAT;
+with Filesystem.FAT.Directories; use Filesystem.FAT.Directories;
 
-package body FAT_Filesystem.Files is
+package body Filesystem.FAT.Files is
 
    type File_Data is array (File_Size range <>) of Interfaces.Unsigned_8;
 
@@ -432,4 +432,4 @@ package body FAT_Filesystem.Files is
       Status := Flush (File);
    end Close;
 
-end FAT_Filesystem.Files;
+end Filesystem.FAT.Files;

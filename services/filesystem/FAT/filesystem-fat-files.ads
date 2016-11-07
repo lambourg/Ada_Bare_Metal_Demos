@@ -26,10 +26,10 @@
 --  XXX! Nothing here is proven thread-safe!
 
 with System;
-with FAT_Filesystem;
+with Filesystem.FAT;
 
 --  @summary File handling for FAT FS
-private package FAT_Filesystem.Files with SPARK_Mode => Off is
+private package Filesystem.FAT.Files with SPARK_Mode => Off is
 
    function Open
      (Parent : Directory_Entry;
@@ -96,4 +96,4 @@ private
      (Handle : in out File_Handle) return File_Size
    is (Handle.Bytes_Total);
 
-end FAT_Filesystem.Files;
+end Filesystem.FAT.Files;

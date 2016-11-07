@@ -17,11 +17,11 @@
 ------------------------------------------------------------------------------
 
 with Ada.Unchecked_Conversion;
-with FAT_Filesystem.Directories;
+with Filesystem.FAT.Directories;
 
-with FAT_Filesystem.Files;
+with Filesystem.FAT.Files;
 
-package body FAT_Filesystem is
+package body Filesystem.FAT is
 
    The_File_Handles :
      array (1 .. MAX_FILE_HANDLES) of aliased File_Handle_Record;
@@ -1220,4 +1220,4 @@ package body FAT_Filesystem is
       end if;
    end Write_Window;
 
-end FAT_Filesystem;
+end Filesystem.FAT;

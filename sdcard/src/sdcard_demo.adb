@@ -34,10 +34,8 @@ with STM32.Board;                use STM32.Board;
 
 with BMP_Fonts;
 
-with FAT_Filesystem;             use FAT_Filesystem;
---  with FAT_Filesystem.Directories; use FAT_Filesystem.Directories;
---  with FAT_Filesystem.Files;       use FAT_Filesystem.Files;
-
+with Filesystem;                 use Filesystem;
+with Filesystem.FAT;             use Filesystem.FAT;
 with Wav_Reader;
 
 procedure SDCard_Demo
@@ -49,10 +47,10 @@ is
    Capacity      : Unsigned_64;
    Error_State   : Boolean := False;
 
-   FS_All        : aliased FAT_Filesystem.FAT_Filesystem;
+   FS_All        : aliased Filesystem.FAT.FAT_Filesystem;
    FS            : constant FAT_Filesystem_Access := FS_All'Unchecked_Access;
 
-   Status        : FAT_Filesystem.Status_Code;
+   Status        : Filesystem.Status_Code;
 
    Y             : Natural := 0;
 
@@ -177,7 +175,7 @@ begin
    Display.Set_Background (255, 255, 255);
 
    SDCard_Device.Initialize;
-   Wav_Reader.Initialize (Volume => 20);
+   Wav_Reader.Initialize (Volume => 60);
 
    loop
       if not SDCard_Device.Card_Present then

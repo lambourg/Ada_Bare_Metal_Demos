@@ -16,7 +16,7 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-private package FAT_Filesystem.Directories is
+private package Filesystem.FAT.Directories is
 
    function Find
      (FS     : FAT_Filesystem_Access;
@@ -95,4 +95,4 @@ private
       Attributes : FAT_Directory_Entry_Attribute;
       E          : out Directory_Entry) return Status_Code;
 
-end FAT_Filesystem.Directories;
+end Filesystem.FAT.Directories;

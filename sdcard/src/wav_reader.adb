@@ -23,7 +23,7 @@
 
 with Ada.Unchecked_Conversion;
 
-with FAT_Filesystem; use FAT_Filesystem;
+with Filesystem.FAT; use Filesystem.FAT;
 
 with HAL.Audio;    use HAL.Audio;
 
@@ -129,7 +129,7 @@ package body Wav_Reader is
    -----------------
 
    function Read_Header
-     (F : in out FAT_Filesystem.File_Handle;
+     (F : in out Filesystem.FAT.File_Handle;
       Info : out WAV_Info) return WAV_Status_Code
    is
       subtype ID is String (1 .. 4);
@@ -252,7 +252,7 @@ package body Wav_Reader is
    ----------
 
    procedure Play
-     (F    : in out FAT_Filesystem.File_Handle;
+     (F    : in out Filesystem.FAT.File_Handle;
       Info : WAV_Info)
    is
       Idx        : Natural;

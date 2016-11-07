@@ -18,7 +18,7 @@
 
 with Ada.Unchecked_Conversion;
 
-package body FAT_Filesystem.Directories is
+package body Filesystem.FAT.Directories is
 
    subtype Entry_Data is Block (1 .. 32);
    function To_Data is new Ada.Unchecked_Conversion
@@ -1240,4 +1240,4 @@ package body FAT_Filesystem.Directories is
       return Status;
    end Allocate_Entry;
 
-end FAT_Filesystem.Directories;
+end Filesystem.FAT.Directories;

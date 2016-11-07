@@ -20,7 +20,7 @@ with System;
 with Interfaces;        use Interfaces;
 with HAL.Block_Drivers; use HAL.Block_Drivers;
 
-package FAT_Filesystem is
+package Filesystem.FAT is
 
    MAX_VOLUMES         : constant := 1;
    --  Maximum number of mounted volumes
@@ -37,39 +37,39 @@ package FAT_Filesystem is
    MAX_DIR_HANDLES     : constant := 5;
    --  Maximum number of handles opened simultaneously.
 
-   type Cluster_Type is mod 2 ** 32 with Size => 32;
+   type Cluster_Type is new Interfaces.Unsigned_32;
    subtype Valid_Cluster is Cluster_Type range 2 .. 16#0FFF_FFFF#;
 
    FREE_CLUSTER_VALUE : constant Cluster_Type := 16#0000_0000#;
    LAST_CLUSTER_VALUE : constant Cluster_Type := 16#0FFF_FFFF#;
    BAD_CLUSTER_VALUE  : constant Cluster_Type := 16#FFFF_FFF7#;
 
-   type Block_Num is mod 2 ** 32 with Size => 32;
+   type Block_Num is new Interfaces.Unsigned_32;
 
-   type Status_Code is
-     (OK,
-      Non_Empty_Directory,
-      Disk_Error, --  A hardware error occurred in the low level disk I/O
-      Disk_Full,
-      Internal_Error,
-      Drive_Not_Ready,
-      No_Such_File,
-      No_Such_Path,
-      Not_Mounted, --  The mount point is invalid
-      Invalid_Name,
-      Access_Denied,
-      Already_Exists,
-      Invalid_Object_Entry,
-      Write_Protected,
-      Invalid_Drive,
-      Not_Enabled, --  The volume has no work area
-      No_Filesystem, --  The volume is not a FAT volume
-      Locked,
-      Too_Many_Open_Files, --  All available handles are used
-      Invalid_Parameter,
-      No_MBR_Found,
-      No_Partition_Found,
-      No_More_Entries);
+--     type Status_Code is
+--       (OK,
+--        Non_Empty_Directory,
+--        Disk_Error, --  A hardware error occurred in the low level disk I/O
+--        Disk_Full,
+--        Internal_Error,
+--        Drive_Not_Ready,
+--        No_Such_File,
+--        No_Such_Path,
+--        Not_Mounted, --  The mount point is invalid
+--        Invalid_Name,
+--        Access_Denied,
+--        Already_Exists,
+--        Invalid_Object_Entry,
+--        Write_Protected,
+--        Invalid_Drive,
+--        Not_Enabled, --  The volume has no work area
+--        No_Filesystem, --  The volume is not a FAT volume
+--        Locked,
+--        Too_Many_Open_Files, --  All available handles are used
+--        Invalid_Parameter,
+--        No_MBR_Found,
+--        No_Partition_Found,
+--        No_More_Entries);
 
    type File_Mode is (Read_Mode, Write_Mode, Read_Write_Mode);
    type Seek_Mode is
@@ -766,4 +766,4 @@ private
    function Get_FS (E : Directory_Entry) return FAT_Filesystem_Access
    is (E.FS);
 
-end FAT_Filesystem;
+end Filesystem.FAT;
