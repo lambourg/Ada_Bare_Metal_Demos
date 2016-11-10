@@ -23,13 +23,132 @@ package body Filesystem.FAT.Files is
 
    type File_Data is array (File_Size range <>) of Interfaces.Unsigned_8;
 
+   function Absolute_Block (File : File_Handle) return Unsigned_32;
+
+   function Ensure_Buffer (File : File_Handle) return Status_Code;
+
+   function Next_Block
+     (File : File_Handle;
+      Inc  : Positive := 1) return Status_Code;
+
    function Read
-     (Handle : File_Handle;
-      Data   : out File_Data) return File_Size;
+     (File : File_Handle;
+      Data : out File_Data) return File_Size;
 
    function Write
-     (File   : File_Handle;
-      Data   : File_Data) return Status_Code;
+     (File : File_Handle;
+      Data : File_Data) return Status_Code;
+
+   --------------------
+   -- Absolute_Block --
+   --------------------
+
+   function Absolute_Block (File : File_Handle) return Unsigned_32
+   is (File.FS.Cluster_To_Block (File.Current_Cluster) + File.Current_Block);
+
+   -------------------
+   -- Ensure_Buffer --
+   -------------------
+
+   function Ensure_Buffer (File : File_Handle) return Status_Code
+   is
+   begin
+      if not File.Buffer_Filled and then File.Mode /= Write_Mode then
+         if not File.FS.Controller.Read
+           (Absolute_Block (File),
+            File.Buffer)
+         then
+            --  Read error
+            return Disk_Error;
+         end if;
+
+         File.Buffer_Filled := True;
+         File.Buffer_Dirty := False;
+      end if;
+
+      return OK;
+   end Ensure_Buffer;
+
+   ----------------
+   -- Next_Block --
+   ----------------
+
+   function Next_Block
+     (File : File_Handle;
+      Inc  : Positive := 1) return Status_Code
+   is
+      Todo   : Unsigned_32 := Unsigned_32 (Inc);
+      Status : Status_Code;
+   begin
+      --  First take care of uninitialized handlers:
+
+      if File.Is_Free then
+         return Invalid_Parameter;
+      end if;
+
+      if File.Current_Cluster = 0 then
+         File.Current_Cluster := File.D_Entry.Start_Cluster;
+         File.Current_Block   := 0;
+         Todo := Todo - 1;
+
+         if Todo = 0 then
+            return OK;
+         end if;
+      end if;
+
+      Status := Flush (File);
+
+      if Status /= OK then
+         return Status;
+      end if;
+
+      --  Invalidate the current block buffer
+      File.Buffer_Filled := False;
+
+      while Todo > 0 loop
+         --  Move to the next block
+         if File.Current_Block + Todo >=
+           Unsigned_32 (File.FS.Blocks_Per_Cluster)
+         then
+            Todo :=
+              Todo -
+                (Unsigned_32 (File.FS.Blocks_Per_Cluster) -
+                       File.Current_Block);
+            File.Current_Block := Unsigned_32 (File.FS.Blocks_Per_Cluster);
+
+         else
+            File.Current_Block := File.Current_Block + Todo;
+            Todo := 0;
+         end if;
+
+         --  Check if we're still in the same cluster
+         if File.Current_Block = Unsigned_32 (File.FS.Blocks_Per_Cluster) then
+            --  Move on to the next cluster
+            File.Current_Block   := 0;
+
+            if not File.FS.Is_Last_Cluster
+              (File.FS.Get_FAT (File.Current_Cluster))
+            then
+               --  Nominal case: there's a next cluster
+               File.Current_Cluster := File.FS.Get_FAT (File.Current_Cluster);
+            elsif File.Mode /= Read_Mode then
+               --  Allocate a new cluster
+               File.Current_Cluster :=
+                 File.FS.New_Cluster (File.Current_Cluster);
+
+               if File.Current_Cluster = INVALID_CLUSTER then
+                  return Disk_Full;
+               end if;
+            else
+               --  Invalid operation: should not happen, so raise an internal
+               --  error
+               return Internal_Error;
+            end if;
+         end if;
+      end loop;
+
+      return OK;
+   end Next_Block;
 
    ---------------
    -- File_Open --
@@ -75,7 +194,8 @@ package body Filesystem.FAT.Files is
          Current_Cluster => Get_Start_Cluster (Node),
          Current_Block   => 0,
          Buffer          => (others => 0),
-         Buffer_Level    => 0,
+         Buffer_Filled   => False,
+         Buffer_Dirty    => False,
          Bytes_Total     => 0,
          D_Entry         => Node,
          Parent          => Parent);
@@ -88,13 +208,13 @@ package body Filesystem.FAT.Files is
    ---------------
 
    function Read
-     (Handle : File_Handle;
+     (File   : File_Handle;
       Addr   : System.Address;
       Length : File_Size) return File_Size
    is
       D : File_Data (1 .. Length) with Import, Address => Addr;
    begin
-      return Read (Handle, D);
+      return Read (File, D);
    end Read;
 
    ---------------
@@ -102,8 +222,8 @@ package body Filesystem.FAT.Files is
    ---------------
 
    function Read
-     (Handle : File_Handle;
-      Data   : out File_Data)
+     (File : File_Handle;
+      Data : out File_Data)
       return File_Size
    is
       Idx         : File_Size;
@@ -115,140 +235,135 @@ package body Filesystem.FAT.Files is
       Data_Idx    : File_Size := Data'First;
       --  Index into the data array of the next bytes to read
 
-      Block_Addr  : Unsigned_32;
-      --  The actual address of the block to read
-
       R_Length    : File_Size;
       --  The size of the data to read in one operation
 
-      Status      : Status_Code with Unreferenced;
+      N_Blocks    : Unsigned_32;
+
+      Status      : Status_Code;
 
    begin
-      if Handle.Is_Free or Handle.Mode = Write_Mode then
+      if File.Is_Free
+        or else File.Mode = Write_Mode
+        or else File.Bytes_Total = Get_Size (File.D_Entry)
+        or else Data_Length = 0
+      then
          return 0;
       end if;
 
-      if Handle.Mode = Read_Write_Mode then
-         Status := Flush (Handle);
+      if File.Mode = Read_Write_Mode then
+         Status := Flush (File);
+
+         if Status /= OK then
+            return 0;
+         end if;
       end if;
 
       --  Clamp the number of data to read to the size of the file
-      if Handle.Bytes_Total + Data'Length > Get_Size (Handle.D_Entry) then
-         Data_Length := Get_Size (Handle.D_Entry) - Handle.Bytes_Total;
+      if File.Bytes_Total + Data'Length > Get_Size (File.D_Entry) then
+         Data_Length := Get_Size (File.D_Entry) - File.Bytes_Total;
       end if;
 
       --  Initialize the current cluster if not already done
-      if Handle.Current_Cluster = 0 then
-         Handle.Current_Cluster := Get_Start_Cluster (Handle.D_Entry);
+      if File.Current_Cluster = 0 then
+         Status := Next_Block (File);
+
+         if Status /= OK then
+            return 0;
+         end if;
       end if;
 
       loop
-         Idx := Handle.Bytes_Total mod Handle.FS.Bytes_Per_Block;
-         Block_Addr := Handle.FS.Cluster_To_Block (Handle.Current_Cluster) +
-           Handle.Current_Block;
+         Idx := File.Bytes_Total mod File.FS.Bytes_Per_Block;
 
-         if Idx = 0 and then Data_Length >= Handle.FS.Bytes_Per_Block then
+         if Idx = 0 and then Data_Length >= File.FS.Bytes_Per_Block then
             --  Case where the data to read is aligned on a block, and
             --  we have at least one block to read.
 
             --  Check the compatibility of the User's buffer with DMA transfers
-            if (Data'Alignment + Idx * 8) mod 32 = 0 then
+            --  ??? This is STM32-specific, needs to be moved out of here
+            if (Data'Alignment + Idx) mod 4 = 0 then
                --  User data is aligned on words: we can directly perform DMA
                --  transfers to it
-               R_Length :=
-                 (Data_Length / Handle.FS.Bytes_Per_Block) *
-                 Handle.FS.Bytes_Per_Block;
+               N_Blocks :=
+                 Unsigned_32 (Data_Length / File.FS.Bytes_Per_Block);
 
-               --  ??? Is this a limitation to use Byte_Array here ? (indexed
-               --  on Natural instead of indexed on File_Size).
-               if not Handle.FS.Controller.Read
-                 (Block_Addr,
-                  HAL.Byte_Array (Data (Data_Idx .. Data_Idx + R_Length - 1)))
+               if N_Blocks + File.Current_Block >
+                 Unsigned_32 (File.FS.Blocks_Per_Cluster)
                then
-                  if Data_Idx = Data'First then
-                     --  not a single byte read, report an error
-                     return 0;
-                  else
-                     return Data_Idx - Data'First;
-                  end if;
+                  N_Blocks :=
+                    Unsigned_32 (File.FS.Blocks_Per_Cluster) -
+                    File.Current_Block;
+               end if;
+
+               if not File.FS.Controller.Read
+                 (Absolute_Block (File),
+                  HAL.Byte_Array
+                    (Data (Data_Idx ..
+                         Data_Idx + File_Size (N_Blocks) * 512 - 1)))
+               then
+                  return Data_Idx - Data'First;
+               end if;
+
+               Status := Next_Block (File, Positive (N_Blocks));
+
+               if Status /= OK then
+                  return Data_Idx - Data'First;
                end if;
 
             else
                --  User data is not aligned: we thus have to use the Handle's
                --  cache (512 bytes)
                --  Reading one block
-               R_Length := Handle.Buffer'Length;
+               N_Blocks := 1;
 
                --  Fill the buffer
-               if not Handle.FS.Controller.Read
-                 (Block_Addr, Handle.Buffer)
-               then
-                  if Data_Idx = Data'First then
-                     --  not a single byte read, report an error
-                     return 0;
-                  else
-                     return Data_Idx - Data'First;
-                  end if;
+               if Ensure_Buffer (File) /= OK then
+                  --  read error: return the number of bytes read so far
+                  return Data_Idx - Data'First;
                end if;
 
-               Data (Data_Idx .. Data_Idx + R_Length - 1) :=
-                 File_Data (Handle.Buffer);
+               Data (Data_Idx .. Data_Idx + 511) := File_Data (File.Buffer);
+
+               Status := Next_Block (File);
+
+               if Status /= OK then
+                  return Data_Idx - Data'First;
+               end if;
             end if;
 
-            Data_Idx := Data_Idx + R_Length;
-            Handle.Current_Block := Handle.Current_Block + 1;
-            Handle.Bytes_Total := Handle.Bytes_Total + R_Length;
-            Handle.Buffer_Level := 0;
-            Data_Length := Data_Length - R_Length;
+            Data_Idx := Data_Idx + File_Size (N_Blocks) * 512;
+            File.Bytes_Total :=
+              File.Bytes_Total + File_Size (N_Blocks) * 512;
+            Data_Length := Data_Length - File_Size (N_Blocks) * 512;
 
          else
             --  Not aligned on a block, or less than 512 bytes to read
             --  We thus need to use our internal buffer.
-            if Handle.Buffer_Level = 0 then
-               Block_Addr :=
-                 Handle.FS.Cluster_To_Block (Handle.Current_Cluster) +
-                 Handle.Current_Block;
-
-               if not Handle.FS.Controller.Read
-                 (Block_Addr,
-                  Handle.Buffer)
-               then
-                  if Data_Idx = Data'First then
-                     --  not a single byte read, report an error
-                     return 0;
-                  else
-                     return Data_Idx - Data'First;
-                  end if;
-               end if;
-
-               Handle.Buffer_Level := Handle.Buffer'Length;
+            if Ensure_Buffer (File) /= OK then
+               --  read error: return the number of bytes read so far
+               return Data_Idx - Data'First;
             end if;
 
-            R_Length := File_Size'Min (Handle.Buffer'Length - Idx,
+            R_Length := File_Size'Min (File.Buffer'Length - Idx,
                                        Data_Length);
             Data (Data_Idx .. Data_Idx + R_Length - 1) := File_Data
-              (Handle.Buffer (Natural (Idx) .. Natural (Idx + R_Length - 1)));
+              (File.Buffer (Natural (Idx) .. Natural (Idx + R_Length - 1)));
 
             Data_Idx           := Data_Idx + R_Length;
-            Handle.Bytes_Total := Handle.Bytes_Total + R_Length;
+            File.Bytes_Total := File.Bytes_Total + R_Length;
             Data_Length        := Data_Length - R_Length;
 
-            if Idx + R_Length = Handle.FS.Bytes_Per_Block then
-               Handle.Current_Block := Handle.Current_Block + 1;
-               Handle.Buffer_Level  := 0;
-            end if;
-         end if;
+            if Idx + R_Length = File.FS.Bytes_Per_Block then
+               Status := Next_Block (File);
 
-         --  Check if we changed cluster
-         if Handle.Current_Block =
-           Unsigned_32 (Handle.FS.Blocks_Per_Cluster)
-         then
-            Handle.Current_Cluster := Handle.FS.Get_FAT (Handle.Current_Cluster);
-            Handle.Current_Block   := 0;
+               if Status /= OK then
+                  return Data_Idx - Data'First;
+               end if;
+            end if;
          end if;
 
          exit when Data_Length = 0;
-         exit when Handle.FS.Is_Last_Cluster (Handle.Current_Cluster);
       end loop;
 
       return Data_Idx - Data'First;
@@ -278,6 +393,8 @@ package body Filesystem.FAT.Files is
    is
       procedure Inc_Size (Amount : File_Size);
 
+      Idx         : File_Size;
+
       Data_Length : File_Size := Data'Length;
       --  The total length to read
 
@@ -287,11 +404,10 @@ package body Filesystem.FAT.Files is
       N_Blocks    : File_Size;
       --  The number of blocks to read at once
 
-      Block_Addr  : Unsigned_32;
-      --  The actual address of the block to read
-
-      W_Length    : Natural;
+      W_Length    : File_Size;
       --  The size of the data to write in one operation
+
+      Status      : Status_Code;
 
       --------------
       -- Inc_Size --
@@ -300,7 +416,7 @@ package body Filesystem.FAT.Files is
       procedure Inc_Size (Amount : File_Size)
       is
       begin
-         Data_Idx := Data_Idx + Amount;
+         Data_Idx          := Data_Idx + Amount;
          File.Bytes_Total  := File.Bytes_Total + Amount;
          Data_Length       := Data_Length - Amount;
 
@@ -314,38 +430,44 @@ package body Filesystem.FAT.Files is
 
       --  Initialize the current cluster if not already done
       if File.Current_Cluster = 0 then
-         File.Current_Cluster := Get_Start_Cluster (File.D_Entry);
+         Status := Next_Block (File);
+
+         if Status /= OK then
+            return Status;
+         end if;
       end if;
 
-      if File.Buffer_Level > 0 then
+      Idx := File.Bytes_Total mod File.FS.Bytes_Per_Block;
+
+      if Data_Length < File.FS.Bytes_Per_Block then
          --  First fill the buffer
-         W_Length := Natural'Min (File.Buffer'Length - File.Buffer_Level,
-                                  Data'Length);
+         if Ensure_Buffer (File) /= OK then
+            --  read error: return the number of bytes read so far
+            return Disk_Error;
+         end if;
 
-         File.Buffer (File.Buffer_Level .. File.Buffer_Level + W_Length - 1) :=
-           Block (Data (Data_Idx .. Data_Idx + File_Size (W_Length) - 1));
+         W_Length := File_Size'Min
+           (File.Buffer'Length - Idx,
+            Data'Length);
 
-         File.Buffer_Level := File.Buffer_Level + W_Length;
-         Inc_Size (File_Size (W_Length));
+         File.Buffer (Natural (Idx) .. Natural (Idx + W_Length - 1)) :=
+           Block (Data (Data_Idx .. Data_Idx + W_Length - 1));
+         File.Buffer_Dirty := True;
 
-         if File.Buffer_Level > File.Buffer'Last then
-            Block_Addr := File.FS.Cluster_To_Block (File.Current_Cluster) +
-              File.Current_Block;
+         Inc_Size (W_Length);
 
-            File.Buffer_Level := 0;
-            if not File.FS.Controller.Write (Block_Addr, File.Buffer) then
-               return Disk_Error;
-            end if;
+         --  If we stopped on the boundaries of a new block, then move on to
+         --  the next block
+         if (File.Bytes_Total mod File.FS.Bytes_Per_Block) = 0 then
+            Status := Next_Block (File);
 
-            File.Current_Block := File.Current_Block + 1;
-
-            if File.Current_Block = Unsigned_32 (File.FS.Blocks_Per_Cluster) then
-               File.Current_Block := 0;
-               File.Current_Cluster := File.FS.Get_FAT (File.Current_Cluster);
+            if Status /= OK then
+               return Status;
             end if;
          end if;
 
-         if Data_Idx > Data'Last then
+         if Data_Length = 0 then
+            --  We've written all the data, let's exit right now
             return OK;
          end if;
       end if;
@@ -357,39 +479,45 @@ package body Filesystem.FAT.Files is
 
          --  Determine the number of full blocks we need to write:
          N_Blocks := File_Size'Min
-           (File_Size (File.FS.Blocks_Per_Cluster) - File_Size (File.Current_Block),
+           (File_Size (File.FS.Blocks_Per_Cluster) -
+                File_Size (File.Current_Block),
             Data_Length / File.FS.Bytes_Per_Block);
 
          --  Writing all blocks in one operation
-         W_Length := Natural (N_Blocks * File.FS.Bytes_Per_Block);
-
-         Block_Addr := File.FS.Cluster_To_Block (File.Current_Cluster) +
-           File.Current_Block;
+         W_Length := N_Blocks * File.FS.Bytes_Per_Block;
 
          --  Fill directly the user data
          if not File.FS.Controller.Write
-           (Block_Addr,
-            Block (Data (Data_Idx .. Data_Idx + File_Size (W_Length) - 1)))
+           (Absolute_Block (File),
+            Block (Data (Data_Idx .. Data_Idx + W_Length - 1)))
          then
             return Disk_Error;
          end if;
 
-         Inc_Size (File_Size (W_Length));
+         Inc_Size (W_Length);
+         Status := Next_Block (File, Positive (N_Blocks));
 
-         if File.Current_Block = Unsigned_32 (File.FS.Blocks_Per_Cluster) then
-            File.Current_Block := 0;
-            File.Current_Cluster := File.FS.Get_FAT (File.Current_Cluster);
+         if Status /= OK then
+            return Status;
          end if;
       end loop;
 
       --  Now everything that remains is smaller than a block. Let's fill the
       --  buffer with this data
-      W_Length := Natural (Data'Last - Data_Idx + 1);
-      File.Buffer (0 .. W_Length - 1) := Block (Data (Data_Idx .. Data'Last));
 
-      Inc_Size (File_Size (W_Length));
+      if Data_Length > 0 then
+         --  First fill the buffer
+         if Ensure_Buffer (File) /= OK then
+            return Disk_Error;
+         end if;
 
-      File.Buffer_Level := W_Length;
+         File.Buffer (0 .. Natural (Data_Length - 1)) :=
+           Block (Data (Data_Idx .. Data'Last));
+         File.Buffer_Dirty := True;
+
+         Inc_Size (Data_Length);
+      end if;
+
 
       return OK;
    end Write;
@@ -402,24 +530,95 @@ package body Filesystem.FAT.Files is
      (File : File_Handle)
       return Status_Code
    is
-      Block_Addr  : Unsigned_32;
-      --  The actual address of the block to read
    begin
-      if File.Mode = Read_Mode
-        or else File.Buffer_Level = 0
-      then
-         return OK;
-      end if;
+      if File.Buffer_Dirty then
+         if not File.FS.Controller.Write
+           (Absolute_Block (File),
+            File.Buffer)
+         then
+            return Disk_Error;
+         end if;
 
-      Block_Addr := File.FS.Cluster_To_Block (File.Current_Cluster) +
-        File.Current_Block;
-
-      if not File.FS.Controller.Write (Block_Addr, File.Buffer) then
-         return Disk_Error;
+         File.Buffer_Dirty := False;
       end if;
 
       return OK;
    end Flush;
+
+   ----------
+   -- Seek --
+   ----------
+
+   function Seek
+     (File   : in out File_Handle;
+      Amount : in out File_Size;
+      Origin : Seek_Mode) return Status_Code
+   is
+      Status    : Status_Code;
+      New_Pos   : File_Size;
+      N_Blocks  : File_Size;
+
+   begin
+      case Origin is
+         when From_Start =>
+            if Amount > Size (File) then
+               Amount := Size (File);
+            end if;
+
+            New_Pos := Amount;
+
+         when From_End =>
+            if Amount > Size (File) then
+               Amount := Size (File);
+            end if;
+
+            New_Pos := Size (File) - Amount;
+
+         when Forward =>
+            if Amount + File.Bytes_Total > Size (File) then
+               Amount := Size (File) - File.Bytes_Total;
+            end if;
+
+            New_Pos := File.Bytes_Total + Amount;
+
+         when Backward =>
+            if Amount > File.Bytes_Total then
+               Amount := File.Bytes_Total;
+            end if;
+
+            New_Pos := File.Bytes_Total - Amount;
+      end case;
+
+      if New_Pos < File.Bytes_Total then
+         --  Rewind the file pointer to the beginning of the file
+         --  ??? A better check would be to first check if we're still in the
+         --  same cluster, in which case we wouldn't need to do this rewind,
+         --  but even if it's the case, we're still safe here, although a bit
+         --  slower than we could.
+         File.Bytes_Total     := 0;
+         File.Current_Cluster := File.D_Entry.Start_Cluster;
+         File.Current_Block   := 0;
+         File.Buffer_Filled   := False;
+      end if;
+
+      N_Blocks := (New_Pos - File.Bytes_Total) / File.FS.Bytes_Per_Block;
+
+      if N_Blocks > 0 then
+         Status := Next_Block (File, Positive (N_Blocks));
+
+         if Status /= OK then
+            return Status;
+         end if;
+      end if;
+
+      File.Bytes_Total := New_Pos;
+
+      if Ensure_Buffer (File) /= OK then
+         return Disk_Error;
+      end if;
+
+      return OK;
+   end Seek;
 
    -----------
    -- Close --

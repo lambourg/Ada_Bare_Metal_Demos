@@ -34,7 +34,6 @@ package Filesystem is
       Invalid_Object_Entry,
       Write_Protected,
       Invalid_Drive,
-      Not_Enabled, --  The volume has no work area
       No_Filesystem, --  The volume is not a FAT volume
       Locked,
       Too_Many_Open_Files, --  All available handles are used

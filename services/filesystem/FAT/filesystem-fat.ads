@@ -42,7 +42,7 @@ package Filesystem.FAT is
 
    FREE_CLUSTER_VALUE : constant Cluster_Type := 16#0000_0000#;
    LAST_CLUSTER_VALUE : constant Cluster_Type := 16#0FFF_FFFF#;
-   BAD_CLUSTER_VALUE  : constant Cluster_Type := 16#FFFF_FFF7#;
+   BAD_CLUSTER_VALUE  : constant Cluster_Type := 16#0FFF_FFF7#;
 
    type Block_Num is new Interfaces.Unsigned_32;
 
@@ -207,7 +207,7 @@ package Filesystem.FAT is
    generic
       type T is private;
    procedure Generic_Read
-     (Handle : in out File_Handle;
+     (Handle : File_Handle;
       Value  : out T);
 
    function Offset
@@ -417,6 +417,7 @@ private
       LBA             : Unsigned_32;
       Controller      : Block_Driver_Ref;
       FSInfo          : FAT_FS_Info;
+      FSInfo_Changed  : Boolean := False;
       Data_Area       : Unsigned_32;
       FAT_Addr        : Unsigned_32;
       Num_Clusters    : Cluster_Type;
@@ -651,7 +652,9 @@ private
       --  Buffer with the content of the current block
       Buffer          : Block (0 .. 511);
       --  How much data in Buffer is meaningful
-      Buffer_Level    : Natural := 0;
+      Buffer_Filled   : Boolean := False;
+      --  Whether there's a discrepency between the disk data and the buffer
+      Buffer_Dirty    : Boolean := False;
       --  The actual file index
       Bytes_Total     : File_Size := 0;
       --  The associated directory entry

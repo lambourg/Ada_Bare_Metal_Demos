@@ -82,7 +82,6 @@ package body Filesystem.FAT is
 
    function Find_Free_Handle return File_Handle
    is
-      Found : Boolean := False;
 
    begin
       for J in Last_File_Handle + 1 .. The_File_Handles'Last loop
@@ -90,28 +89,20 @@ package body Filesystem.FAT is
             The_File_Handles (J).Is_Free := False;
             Last_File_Handle := J;
 
-            Found := True;
-            exit;
+            return The_File_Handles (Last_File_Handle)'Access;
          end if;
       end loop;
 
-      if not Found then
-         for J in The_File_Handles'First .. Last_File_Handle loop
-            if The_File_Handles (J).Is_Free then
-               The_File_Handles (J).Is_Free := False;
-               Last_File_Handle := J;
+      for J in The_File_Handles'First .. Last_File_Handle loop
+         if The_File_Handles (J).Is_Free then
+            The_File_Handles (J).Is_Free := False;
+            Last_File_Handle := J;
 
-               Found := True;
-               exit;
-            end if;
-         end loop;
-      end if;
+            return The_File_Handles (Last_File_Handle)'Access;
+         end if;
+      end loop;
 
-      if not Found then
-         return null;
-      else
-         return The_File_Handles (Last_File_Handle)'Access;
-      end if;
+      return null;
    end Find_Free_Handle;
 
    ---------
@@ -592,6 +583,7 @@ package body Filesystem.FAT is
 
          FS.FSInfo :=
            To_FSInfo (FS.Window (16#1E4# .. 16#1EF#));
+         FS.FSInfo_Changed := False;
       end if;
 
       declare
@@ -614,7 +606,32 @@ package body Filesystem.FAT is
 
    procedure Close (FS : FAT_Filesystem_Access)
    is
+      File : File_Handle;
+      Dir  : Directory_Handle;
    begin
+      for J in The_File_Handles'Range loop
+         if not The_File_Handles (J).Is_Free
+           and then The_File_Handles (J).FS = FS
+         then
+            File := The_File_Handles (J)'Access;
+            Close (File);
+         end if;
+      end loop;
+
+      for J in The_Dir_Handles'Range loop
+         if not The_Dir_Handles (J).Is_Free
+           and then The_Dir_Handles (J).FS = FS
+         then
+            Dir := The_Dir_Handles (J)'Access;
+            Close (Dir);
+         end if;
+      end loop;
+
+      if FS.FSInfo_Changed then
+         FS.Write_FSInfo;
+         FS.FSInfo_Changed := False;
+      end if;
+
       FS.Mounted := False;
    end Close;
 
@@ -856,7 +873,7 @@ package body Filesystem.FAT is
    ----------
 
    procedure Generic_Read
-     (Handle : in out File_Handle;
+     (Handle : File_Handle;
       Value  : out T)
    is
       Ret : File_Size with Unreferenced;
@@ -908,10 +925,8 @@ package body Filesystem.FAT is
       Amount : in out File_Size;
       Origin : Seek_Mode) return Status_Code
    is
-      pragma Unreferenced (File, Amount, Origin);
    begin
-      pragma Compile_Time_Warning (True, "Not implemented yet");
-      return Internal_Error;
+      return Files.Seek (File, Amount, Origin);
    end Seek;
 
    ----------------
@@ -1076,20 +1091,24 @@ package body Filesystem.FAT is
       end if;
 
       --  Next check the most recently allocated cluster
-      Candidate := FS.Most_Recently_Allocated_Cluster;
+      Candidate := FS.Most_Recently_Allocated_Cluster + 1;
 
-      if Candidate in Valid_Cluster'Range
+      if Candidate not in Valid_Cluster'Range then
+         Candidate := Valid_Cluster'First;
+      end if;
+
+      while Candidate in Valid_Cluster'Range
         and then Candidate < FS.Num_Clusters
-      then
-         Candidate := Candidate + 1;
+      loop
          if FS.Is_Free_Cluster (FS.Get_FAT (Candidate)) then
             return Candidate;
          end if;
-      end if;
 
-      --  Otherwise, comprehensive search for the first free cluster
+         Candidate := Candidate + 1;
+      end loop;
+
       Candidate := Valid_Cluster'First;
-      while Candidate <= FS.Num_Clusters loop
+      while Candidate <= FS.Most_Recently_Allocated_Cluster loop
          if FS.Is_Free_Cluster (FS.Get_FAT (Candidate)) then
             return Candidate;
          end if;
@@ -1143,7 +1162,7 @@ package body Filesystem.FAT is
 
       FS.FSInfo.Free_Clusters := FS.FSInfo.Free_Clusters - 1;
       FS.FSInfo.Last_Allocated_Cluster := Ret;
-      FS.Write_FSInfo;
+      FS.FSInfo_Changed := True;
 
       return Ret;
    end New_Cluster;

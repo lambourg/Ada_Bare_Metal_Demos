@@ -45,20 +45,20 @@ private package Filesystem.FAT.Files with SPARK_Mode => Off is
    --  if Mode is Read_Write_Mode, then the file is created if not exist, else
    --   its content is preserved but can be overwritten by calls to File_Write.
 
-   function Size (Handle : File_Handle) return File_Size;
+   function Size (File : File_Handle) return File_Size;
 
-   function Mode (Handle : File_Handle) return File_Mode;
+   function Mode (File : File_Handle) return File_Mode;
 
    function Read
-     (Handle : File_Handle;
+     (File   : File_Handle;
       Addr   : System.Address;
       Length : File_Size) return File_Size
-     with Pre => Mode (Handle) /= Write_Mode;
+     with Pre => Mode (File) /= Write_Mode;
    --  read data from file.
    --  @return number of bytes read (at most Data'Length), or -1 on error.
 
    function Offset
-     (Handle : in out File_Handle) return File_Size;
+     (File : in out File_Handle) return File_Size;
    --  Current index within the file
 
    function Write
@@ -74,10 +74,11 @@ private package Filesystem.FAT.Files with SPARK_Mode => Off is
      (File : File_Handle) return Status_Code;
    --  force writing file to disk at this very moment (slow!)
 
---     function File_Seek
---       (File     : in out File_Handle;
---        Position : Unsigned_32) return Status_Code;
-   --  Moves the current file position to "Position"
+   function Seek
+     (File   : in out File_Handle;
+      Amount : in out File_Size;
+      Origin : Seek_Mode) return Status_Code;
+   --  Moves the current file position from "Origin" of "Amount" bytes.
 
    procedure Close (File : in out File_Handle);
    --  invalidates the handle, and ensures that
@@ -86,14 +87,14 @@ private package Filesystem.FAT.Files with SPARK_Mode => Off is
 private
    pragma SPARK_Mode (Off);
 
-   function Size (Handle : File_Handle) return File_Size
-   is (Get_Size (Handle.D_Entry));
+   function Size (File : File_Handle) return File_Size
+   is (Get_Size (File.D_Entry));
 
-   function Mode (Handle : File_Handle) return File_Mode
-     is (Handle.Mode);
+   function Mode (File : File_Handle) return File_Mode
+     is (File.Mode);
 
    function Offset
-     (Handle : in out File_Handle) return File_Size
-   is (Handle.Bytes_Total);
+     (File : in out File_Handle) return File_Size
+   is (File.Bytes_Total);
 
 end Filesystem.FAT.Files;

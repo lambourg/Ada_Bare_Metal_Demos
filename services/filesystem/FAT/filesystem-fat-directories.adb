@@ -813,7 +813,6 @@ package body Filesystem.FAT.Directories is
       DEntry      : Directory_Entry;
       SName       : Short_Name := (others => ' ');
       SExt        : Extension  := (others => ' ');
-      New_Entries : Boolean := False;
       Index       : Entry_Index;
 
       --  Retrieve the number of VFAT entries that are needed, plus one for
@@ -1091,7 +1090,6 @@ package body Filesystem.FAT.Directories is
          Index := Parent.Current_Index;
 
          --  Indicate that a new Entry terminator needs to be added.
-         New_Entries := True;
          N_Entries := N_Entries + 1;
       end if;
 
@@ -1162,7 +1160,9 @@ package body Filesystem.FAT.Directories is
                Cluster_L  => Unsigned_16 (E.Start_Cluster and 16#FFFF#),
                Size       => 0);
 
-            --  Now write down the new entries
+            --  Now write down the new entries:
+
+            --  First reset the directory handle
             Reset (Parent);
 
             --  Retrieve the block number relative to the first block of the
@@ -1210,7 +1210,9 @@ package body Filesystem.FAT.Directories is
                     Unsigned_32 (Parent.FS.Blocks_Per_Cluster)
                   then
                      N_Blocks := 0;
-                     if New_Entries then
+                     if Parent.FS.Is_Last_Cluster
+                       (Parent.FS.Get_FAT (Parent.Current_Cluster))
+                     then
                         Parent.Current_Cluster :=
                           Parent.FS.New_Cluster (Parent.Current_Cluster);
                      else
