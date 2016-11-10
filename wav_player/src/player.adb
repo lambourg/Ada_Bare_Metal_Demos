@@ -31,6 +31,7 @@ with Cortex_M.Cache;             use Cortex_M.Cache;
 --  with STM32.SDMMC;                use STM32.SDMMC;
 with STM32.Board;                use STM32.Board;
 
+with Hershey_Fonts.FuturaL;
 with BMP_Fonts;
 
 with Filesystem;                 use Filesystem;
@@ -57,6 +58,9 @@ is
    Y                 : Natural := 0;
 
    Current_Directory : FAT_Path := -"/";
+
+   Font              : constant Hershey_Fonts.Hershey_Font :=
+                         Hershey_Fonts.Read (Hershey_Fonts.FuturaL.Font);
 
    -------------------------
    -- Display_Current_Dir --
@@ -211,7 +215,7 @@ begin
                   S, S1 : Wav_DB.Selection;
                   F     : File_Handle;
                   I     : Wav_Reader.WAV_Info;
-                  X, W  : Natural;
+
                begin
                   S := Wav_DB.New_Selection;
 
@@ -224,55 +228,67 @@ begin
                         Wav_DB.Select_Artist (S1, J);
                         Wav_DB.Select_Album (S1, K);
 
+                        Display.Get_Hidden_Buffer (1).Fill (Transparent);
+                        Y := 0;
+
+                        Draw_String
+                          (Buffer     => Display.Get_Hidden_Buffer (1),
+                           Area       => ((0, Y), Display.Get_Width, 30),
+                           Msg        => Wav_DB.Artist (S1, 1),
+                           Font       => Font,
+                           Bold       => True,
+                           Outline    => False,
+                           Foreground => HAL.Bitmap.Black);
+                        Y := Y + 31;
+
+                        Draw_String
+                          (Buffer     => Display.Get_Hidden_Buffer (1),
+                           Area       => ((0, Y), Display.Get_Width, 30),
+                           Msg        => Wav_DB.Album (S1, 1),
+                           Font       => Font,
+                           Bold       => True,
+                           Outline    => False,
+                           Foreground => HAL.Bitmap.Dark_Grey);
+                        Y := Y + 31;
+
                         for L in 1 .. Wav_DB.Num_Tracks (S1) loop
-                           Display.Get_Hidden_Buffer (1).Fill (Transparent);
-                           Y := 0;
-                           W := Wav_DB.Artist (S1, 1)'Length * 16;
-
-                           if W < Display.Get_Width then
-                              X := (Display.Get_Width - W) / 2;
-                           else
-                              X := 0;
-                           end if;
-
                            Draw_String
                              (Display.Get_Hidden_Buffer (1),
-                              (X, Y),
-                              Wav_DB.Artist (S1, 1),
-                              BMP_Fonts.Font16x24,
-                              HAL.Bitmap.Black,
+                              (0, Y),
+                              Wav_DB.Track (S1, L).Info.Track_Num'Img &
+                                " - " &
+                                Wav_DB.Track (S1, L).Info.Title,
+                              BMP_Fonts.Font12x12,
+                              HAL.Bitmap.Light_Grey,
                               Transparent);
-                           Y := Y + 25;
-                           W := Wav_DB.Album (S1, 1)'Length * 16;
+                           Y := Y + 13;
+                        end loop;
 
-                           if W < Display.Get_Width then
-                              X := (Display.Get_Width - W) / 2;
-                           else
-                              X := 0;
-                           end if;
+                        for L in 1 .. Wav_DB.Num_Tracks (S1) loop
+                           Y := 62 + (L - 2) * 13;
 
-                           Draw_String
-                             (Display.Get_Hidden_Buffer (1),
-                              (X, Y),
-                              Wav_DB.Album (S1, 1),
-                              BMP_Fonts.Font16x24,
-                              HAL.Bitmap.Dark_Blue,
-                              Transparent);
-                           Y := Y + 25;
-
-                           for M in 1 .. Wav_DB.Num_Tracks (S1) loop
+                           if L /= 1 then
                               Draw_String
                                 (Display.Get_Hidden_Buffer (1),
                                  (0, Y),
-                                 Wav_DB.Track (S1, M).Info.Track_Num'Img &
+                                 Wav_DB.Track (S1, L - 1).Info.Track_Num'Img &
                                    " - " &
-                                   Wav_DB.Track (S1, M).Info.Title,
+                                   Wav_DB.Track (S1, L - 1).Info.Title,
                                  BMP_Fonts.Font12x12,
-                                 (if M = L then HAL.Bitmap.Black
-                                  else HAL.Bitmap.Light_Grey),
+                                 HAL.Bitmap.Light_Grey,
                                  Transparent);
-                              Y := Y + 13;
-                           end loop;
+                           end if;
+
+                           Y := Y + 13;
+                              Draw_String
+                                (Display.Get_Hidden_Buffer (1),
+                                 (0, Y),
+                                 Wav_DB.Track (S1, L).Info.Track_Num'Img &
+                                   " - " &
+                                   Wav_DB.Track (S1, L).Info.Title,
+                                 BMP_Fonts.Font12x12,
+                                 HAL.Bitmap.Black,
+                                 Transparent);
 
                            Display.Update_Layer (1, True);
 
