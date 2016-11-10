@@ -37,7 +37,6 @@ with BMP_Fonts;
 with Filesystem;                 use Filesystem;
 with Filesystem.MBR;             use Filesystem.MBR;
 with Filesystem.FAT;             use Filesystem.FAT;
-with Wav_Reader;
 
 procedure SDCard_Demo
 is
@@ -108,61 +107,6 @@ is
                   Display_Current_Dir (E);
                   To_Parent (Current_Directory);
                end if;
-            else
-               declare
-                  N : constant String := -Long_Name (E);
-                  F : File_Handle;
-                  I : Wav_Reader.WAV_Info;
-                  use Wav_Reader;
-               begin
-                  if N'Length > 4
-                    and then N (N'Last - 3 .. N'Last) = ".wav"
-                  then
-                     if Open (Dir_Entry, Long_Name (E), Read_Mode, F) = OK then
-                        if Wav_Reader.Read_Header (F, I) /= OK then
-                           Draw_String
-                             (Display.Get_Hidden_Buffer (1),
-                              (0, Y),
-                              "Cannot read WAV information",
-                              BMP_Fonts.Font12x12,
-                              HAL.Bitmap.Red,
-                              Transparent);
-                           Display.Update_Layer (1, True);
-                           Y := Y + 13;
-                        else
-                           Draw_String
-                             (Display.Get_Hidden_Buffer (1),
-                              (0, Y),
-                              "Artist: " & I.Metadata.Artist,
-                              BMP_Fonts.Font12x12,
-                              HAL.Bitmap.Blue,
-                              Transparent);
-                           Y := Y + 13;
-                           Draw_String
-                             (Display.Get_Hidden_Buffer (1),
-                              (0, Y),
-                              "Title:  " & I.Metadata.Title,
-                              BMP_Fonts.Font12x12,
-                              HAL.Bitmap.Blue,
-                              Transparent);
-                           Y := Y + 13;
-                           Draw_String
-                             (Display.Get_Hidden_Buffer (1),
-                              (0, Y),
-                              "Album:  " & I.Metadata.Album,
-                              BMP_Fonts.Font12x12,
-                              HAL.Bitmap.Blue,
-                              Transparent);
-                           Y := Y + 13;
-                           Display.Update_Layer (1, True);
-
-                           Play (F, I);
-                        end if;
-
-                        Close (F);
-                     end if;
-                  end if;
-               end;
             end if;
          end if;
       end loop;
@@ -177,7 +121,6 @@ begin
    Display.Set_Background (255, 255, 255);
 
    SDCard_Device.Initialize;
-   Wav_Reader.Initialize (Volume => 60);
 
    loop
       if not SDCard_Device.Card_Present then
@@ -240,7 +183,6 @@ begin
                BMP_Fonts.Font12x12,
                HAL.Bitmap.Red,
                Transparent);
-            Display.Update_Layer (1, True);
             Y := Y + 13;
 
          else
@@ -248,17 +190,6 @@ begin
                Status := No_Partition_Found;
 
                if Valid (MBR, P) then
-                  Draw_String
-                    (Display.Get_Hidden_Buffer (1),
-                     (0, Y),
-                     "Found Valid partition: " &
-                       Partition_Type'Image (Get_Type (MBR, P)),
-                     BMP_Fonts.Font12x12,
-                     HAL.Bitmap.Dark_Green,
-                     Transparent);
-                  Display.Update_Layer (1, True);
-                  Y := Y + 13;
-
                   Status := Open
                     (SDCard_Device'Access,
                      LBA (MBR, P),
@@ -287,11 +218,20 @@ begin
             Draw_String
               (Display.Get_Hidden_Buffer (1),
                (0, Y),
+               "FAT FS: " & OEM_Name (FS.all),
+               BMP_Fonts.Font12x12,
+               HAL.Bitmap.Dark_Green,
+               Transparent);
+            Y := Y + 13;
+            Draw_String
+              (Display.Get_Hidden_Buffer (1),
+               (0, Y),
                Volume_Label (FS.all) & " (" & File_System_Type (FS.all) & "):",
                BMP_Fonts.Font12x12,
                Dark_Red,
                Transparent);
             Y := Y + 25;
+            Display.Update_Layer (1);
 
             Current_Directory := -"/";
 

@@ -33,9 +33,8 @@ with STM32.Button; use STM32.Button;
 
 package body Wav_Reader is
 
-   subtype Buffer_Type is Audio_Buffer (1 .. 8 * 1024);
+   subtype Buffer_Type is Audio_Buffer (1 .. 2 * 1024);
    Buffer : aliased Buffer_Type := (others => 0);
-   for Buffer'Alignment use 32;
 
    protected Buffer_Scheduler is
       entry Next_Index (Idx  : out Natural;
@@ -129,7 +128,7 @@ package body Wav_Reader is
    -----------------
 
    function Read_Header
-     (F : in out Filesystem.FAT.File_Handle;
+     (F    : in out Filesystem.FAT.File_Handle;
       Info : out WAV_Info) return WAV_Status_Code
    is
       subtype ID is String (1 .. 4);
@@ -167,10 +166,12 @@ package body Wav_Reader is
          else
             S (S'First .. S'First + Integer (H.Size - 2)) :=
               Buffer (1 .. Natural (H.Size) - 1);
+            S (S'First + Integer (H.Size) - 1 .. S'Last) := (others => ' ');
          end if;
       end Read_String;
 
    begin
+      Info := (others => <>);
       Read_Header (F, Header);
 
       if Header.ID /= "RIFF" then
@@ -207,6 +208,24 @@ package body Wav_Reader is
                   Read_String (Header, Info.Metadata.Title);
                elsif Header.ID = "IPRD" then
                   Read_String (Header, Info.Metadata.Album);
+               elsif Header.ID = "IPRT" then
+                  declare
+                     Trk_String : String (1 .. Natural (Header.Size) - 1);
+                  begin
+                     Read_String (Header, Trk_String);
+                     Info.Metadata.Track_Num := 0;
+
+                     for J in Trk_String'Range loop
+                        if Trk_String (J) = '/' then
+                           exit;
+                        elsif Trk_String (J) in '0' .. '9' then
+                           Info.Metadata.Track_Num :=
+                             Info.Metadata.Track_Num * 10 +
+                               Character'Pos (Trk_String (J)) -
+                                 Character'Pos ('0');
+                        end if;
+                     end loop;
+                  end;
                elsif Header.ID = "ICRD" then
                   declare
                      Y_String : String (1 .. 4);

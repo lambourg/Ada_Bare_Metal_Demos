@@ -42,4 +42,16 @@ package Filesystem is
       No_Partition_Found,
       No_More_Entries);
 
+   type File_Mode is (Read_Mode, Write_Mode, Read_Write_Mode);
+   type Seek_Mode is
+     (
+      --  Seek from the beginning of the file, forward
+      From_Start,
+      --  Seek from the end of the file, backward
+      From_End,
+      --  Seek from the current position, forward
+      Forward,
+      --  Seek from the current position, backward
+      Backward);
+
 end Filesystem;

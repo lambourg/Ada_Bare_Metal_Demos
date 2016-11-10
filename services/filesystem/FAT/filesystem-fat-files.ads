@@ -26,7 +26,6 @@
 --  XXX! Nothing here is proven thread-safe!
 
 with System;
-with Filesystem.FAT;
 
 --  @summary File handling for FAT FS
 private package Filesystem.FAT.Files with SPARK_Mode => Off is

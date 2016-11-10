@@ -23,21 +23,16 @@ package body Filesystem.FAT.Files is
 
    type File_Data is array (File_Size range <>) of Interfaces.Unsigned_8;
 
-   function Absolute_Block (File : File_Handle) return Unsigned_32;
+   function Absolute_Block (File : File_Handle) return Unsigned_32
+     with Inline_Always;
 
-   function Ensure_Buffer (File : File_Handle) return Status_Code;
+   function Ensure_Buffer (File : File_Handle) return Status_Code
+     with Inline_Always;
 
    function Next_Block
      (File : File_Handle;
-      Inc  : Positive := 1) return Status_Code;
-
-   function Read
-     (File : File_Handle;
-      Data : out File_Data) return File_Size;
-
-   function Write
-     (File : File_Handle;
-      Data : File_Data) return Status_Code;
+      Inc  : Positive := 1) return Status_Code
+     with Inline_Always;
 
    --------------------
    -- Absolute_Block --
@@ -212,20 +207,9 @@ package body Filesystem.FAT.Files is
       Addr   : System.Address;
       Length : File_Size) return File_Size
    is
-      D : File_Data (1 .. Length) with Import, Address => Addr;
-   begin
-      return Read (File, D);
-   end Read;
+      Data        : File_Data (1 .. Length) with Import, Address => Addr;
+      --  Byte array representation of the buffer to read
 
-   ---------------
-   -- File_Read --
-   ---------------
-
-   function Read
-     (File : File_Handle;
-      Data : out File_Data)
-      return File_Size
-   is
       Idx         : File_Size;
       --  Index from the current block
 
@@ -260,33 +244,23 @@ package body Filesystem.FAT.Files is
       end if;
 
       --  Clamp the number of data to read to the size of the file
-      if File.Bytes_Total + Data'Length > Get_Size (File.D_Entry) then
-         Data_Length := Get_Size (File.D_Entry) - File.Bytes_Total;
-      end if;
-
-      --  Initialize the current cluster if not already done
-      if File.Current_Cluster = 0 then
-         Status := Next_Block (File);
-
-         if Status /= OK then
-            return 0;
-         end if;
-      end if;
+      Data_Length := File_Size'Min
+        (Get_Size (File.D_Entry) - File.Bytes_Total,
+         Data_Length);
 
       loop
-         Idx := File.Bytes_Total mod File.FS.Bytes_Per_Block;
+         Idx := File.Bytes_Total mod File.FS.Block_Size;
 
-         if Idx = 0 and then Data_Length >= File.FS.Bytes_Per_Block then
+         if Idx = 0 and then Data_Length >= File.FS.Block_Size then
             --  Case where the data to read is aligned on a block, and
             --  we have at least one block to read.
 
             --  Check the compatibility of the User's buffer with DMA transfers
-            --  ??? This is STM32-specific, needs to be moved out of here
-            if (Data'Alignment + Idx) mod 4 = 0 then
+            if Data'Alignment mod 4 = 0 then
                --  User data is aligned on words: we can directly perform DMA
                --  transfers to it
                N_Blocks :=
-                 Unsigned_32 (Data_Length / File.FS.Bytes_Per_Block);
+                 Unsigned_32 (Data_Length / File.FS.Block_Size);
 
                if N_Blocks + File.Current_Block >
                  Unsigned_32 (File.FS.Blocks_Per_Cluster)
@@ -314,6 +288,7 @@ package body Filesystem.FAT.Files is
             else
                --  User data is not aligned: we thus have to use the Handle's
                --  cache (512 bytes)
+
                --  Reading one block
                N_Blocks := 1;
 
@@ -354,7 +329,7 @@ package body Filesystem.FAT.Files is
             File.Bytes_Total := File.Bytes_Total + R_Length;
             Data_Length        := Data_Length - R_Length;
 
-            if Idx + R_Length = File.FS.Bytes_Per_Block then
+            if Idx + R_Length = File.FS.Block_Size then
                Status := Next_Block (File);
 
                if Status /= OK then
@@ -378,20 +353,10 @@ package body Filesystem.FAT.Files is
       Addr   : System.Address;
       Length : File_Size) return Status_Code
    is
-      Data : aliased File_Data (1 .. Length) with Address => Addr;
-   begin
-      return Write (File, Data);
-   end Write;
-
-   -----------
-   -- Write --
-   -----------
-
-   function Write
-     (File   : File_Handle;
-      Data   : File_Data) return Status_Code
-   is
       procedure Inc_Size (Amount : File_Size);
+
+      Data        : aliased File_Data (1 .. Length) with Address => Addr;
+      --  Byte array representation of the data to write
 
       Idx         : File_Size;
 
@@ -437,9 +402,9 @@ package body Filesystem.FAT.Files is
          end if;
       end if;
 
-      Idx := File.Bytes_Total mod File.FS.Bytes_Per_Block;
+      Idx := File.Bytes_Total mod File.FS.Block_Size;
 
-      if Data_Length < File.FS.Bytes_Per_Block then
+      if Data_Length < File.FS.Block_Size then
          --  First fill the buffer
          if Ensure_Buffer (File) /= OK then
             --  read error: return the number of bytes read so far
@@ -458,7 +423,7 @@ package body Filesystem.FAT.Files is
 
          --  If we stopped on the boundaries of a new block, then move on to
          --  the next block
-         if (File.Bytes_Total mod File.FS.Bytes_Per_Block) = 0 then
+         if (File.Bytes_Total mod File.FS.Block_Size) = 0 then
             Status := Next_Block (File);
 
             if Status /= OK then
@@ -474,17 +439,17 @@ package body Filesystem.FAT.Files is
 
       --  At this point, the buffer is empty and a new block is ready to be
       --  written. Check if we can write several blocks at once
-      while Data_Length >= File.FS.Bytes_Per_Block loop
+      while Data_Length >= File.FS.Block_Size loop
          --  we have at least one full block to write.
 
          --  Determine the number of full blocks we need to write:
          N_Blocks := File_Size'Min
            (File_Size (File.FS.Blocks_Per_Cluster) -
                 File_Size (File.Current_Block),
-            Data_Length / File.FS.Bytes_Per_Block);
+            Data_Length / File.FS.Block_Size);
 
          --  Writing all blocks in one operation
-         W_Length := N_Blocks * File.FS.Bytes_Per_Block;
+         W_Length := N_Blocks * File.FS.Block_Size;
 
          --  Fill directly the user data
          if not File.FS.Controller.Write
@@ -601,7 +566,7 @@ package body Filesystem.FAT.Files is
          File.Buffer_Filled   := False;
       end if;
 
-      N_Blocks := (New_Pos - File.Bytes_Total) / File.FS.Bytes_Per_Block;
+      N_Blocks := (New_Pos - File.Bytes_Total) / File.FS.Block_Size;
 
       if N_Blocks > 0 then
          Status := Next_Block (File, Positive (N_Blocks));

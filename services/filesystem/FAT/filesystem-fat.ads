@@ -37,52 +37,6 @@ package Filesystem.FAT is
    MAX_DIR_HANDLES     : constant := 5;
    --  Maximum number of handles opened simultaneously.
 
-   type Cluster_Type is new Interfaces.Unsigned_32;
-   subtype Valid_Cluster is Cluster_Type range 2 .. 16#0FFF_FFFF#;
-
-   FREE_CLUSTER_VALUE : constant Cluster_Type := 16#0000_0000#;
-   LAST_CLUSTER_VALUE : constant Cluster_Type := 16#0FFF_FFFF#;
-   BAD_CLUSTER_VALUE  : constant Cluster_Type := 16#0FFF_FFF7#;
-
-   type Block_Num is new Interfaces.Unsigned_32;
-
---     type Status_Code is
---       (OK,
---        Non_Empty_Directory,
---        Disk_Error, --  A hardware error occurred in the low level disk I/O
---        Disk_Full,
---        Internal_Error,
---        Drive_Not_Ready,
---        No_Such_File,
---        No_Such_Path,
---        Not_Mounted, --  The mount point is invalid
---        Invalid_Name,
---        Access_Denied,
---        Already_Exists,
---        Invalid_Object_Entry,
---        Write_Protected,
---        Invalid_Drive,
---        Not_Enabled, --  The volume has no work area
---        No_Filesystem, --  The volume is not a FAT volume
---        Locked,
---        Too_Many_Open_Files, --  All available handles are used
---        Invalid_Parameter,
---        No_MBR_Found,
---        No_Partition_Found,
---        No_More_Entries);
-
-   type File_Mode is (Read_Mode, Write_Mode, Read_Write_Mode);
-   type Seek_Mode is
-     (
-      --  Seek from the beginning of the file, forward
-      From_Start,
-      --  Seek from the end of the file, backward
-      From_End,
-      --  Seek from the current position, forward
-      Forward,
-      --  Seek from the current position, backward
-      Backward);
-
    type FAT_Name is private;
 
    type FAT_Filesystem is limited private;
@@ -167,7 +121,6 @@ package Filesystem.FAT is
    function Is_System_File (E : Directory_Entry) return Boolean;
    function Is_Subdirectory (E : Directory_Entry) return Boolean;
    function Is_Archive (E : Directory_Entry) return Boolean;
-   function Get_Start_Cluster (E : Directory_Entry) return Cluster_Type;
    function Get_Size (E : Directory_Entry) return File_Size;
    function Get_FS (E : Directory_Entry) return FAT_Filesystem_Access;
 
@@ -200,7 +153,7 @@ package Filesystem.FAT is
      (Handle : in out File_Handle;
       Addr   : System.Address;
       Length : File_Size) return File_Size
-     with Pre => Mode (Handle) /= Write_Mode;
+     with Inline_Always;
    --  read data from file.
    --  @return number of bytes read (at most Data'Length), or -1 on error.
 
@@ -218,8 +171,7 @@ package Filesystem.FAT is
      (File   : in out File_Handle;
       Addr   : System.Address;
       Length : File_Size) return Status_Code
-     with
-       Pre => Mode (File) = Write_Mode or else Mode (File) = Read_Write_Mode;
+     with Inline_Always;
    --  write to file
    --  @return number of bytes written (at most Data'Length), or -1 on error.
 
@@ -266,27 +218,6 @@ package Filesystem.FAT is
    function OEM_Name (FS : FAT_Filesystem) return String;
    --  The OEM Name of the Volume. Different from the Volume Label.
 
-   function Bytes_Per_Block
-     (FS : FAT_Filesystem) return File_Size;
-   function Blocks_Per_Cluster
-     (FS : FAT_Filesystem) return Unsigned_8;
-   function Bytes_Per_Cluster
-     (FS : FAT_Filesystem) return File_Size;
-   function Reserved_Blocks
-     (FS : FAT_Filesystem) return Unsigned_16;
-   function Number_Of_FATs
-     (FS : FAT_Filesystem) return Unsigned_8;
-   function Total_Number_Of_Blocks
-     (FS : FAT_Filesystem) return Unsigned_32;
-   function Removable_Drive
-     (FS : FAT_Filesystem) return Boolean;
-   function FAT_Table_Size_In_Blocks
-     (FS : FAT_Filesystem) return Unsigned_32;
-   function Number_Of_Hidden_Blocks
-     (FS : FAT_Filesystem) return Unsigned_32;
-   function Drive_Number
-     (FS : FAT_Filesystem) return Unsigned_8;
-
    function Is_Volume
      (FS : FAT_Filesystem) return Boolean;
    function Volume_ID
@@ -295,13 +226,36 @@ package Filesystem.FAT is
      (FS : FAT_Filesystem) return String;
    function File_System_Type
      (FS : FAT_Filesystem) return String;
+
+private
+
+   type Cluster_Type is new Interfaces.Unsigned_32;
+   subtype Valid_Cluster is Cluster_Type range 2 .. 16#0FFF_FFFF#;
+   type Block_Num is new Interfaces.Unsigned_32;
+
+   INVALID_CLUSTER    : constant Cluster_Type := 0;
+   FREE_CLUSTER_VALUE : constant Cluster_Type := 16#0000_0000#;
+   LAST_CLUSTER_VALUE : constant Cluster_Type := 16#0FFF_FFFF#;
+   BAD_CLUSTER_VALUE  : constant Cluster_Type := 16#0FFF_FFF7#;
+
+   function Block_Size
+     (FS : FAT_Filesystem) return File_Size;
+   function Blocks_Per_Cluster
+     (FS : FAT_Filesystem) return Unsigned_8;
+   function Cluster_Size
+     (FS : FAT_Filesystem) return File_Size;
+   function Reserved_Blocks
+     (FS : FAT_Filesystem) return Unsigned_16;
+   function Number_Of_FATs
+     (FS : FAT_Filesystem) return Unsigned_8;
+   function Total_Number_Of_Blocks
+     (FS : FAT_Filesystem) return Unsigned_32;
+   function FAT_Table_Size_In_Blocks
+     (FS : FAT_Filesystem) return Unsigned_32;
+   function Number_Of_Hidden_Blocks
+     (FS : FAT_Filesystem) return Unsigned_32;
    function Root_Dir_Cluster
      (FS : FAT_Filesystem) return Cluster_Type;
-
-   --------------------
-   -- FAT32 specific --
-   --------------------
-
    function Flags_For_FAT_Mirroring
      (FS : FAT_Filesystem) return Unsigned_16
      with Pre => Version (FS) = FAT32;
@@ -320,10 +274,6 @@ package Filesystem.FAT is
    function Most_Recently_Allocated_Cluster
      (FS : FAT_Filesystem) return Cluster_Type
      with Pre => Version (FS) = FAT32;
-
-private
-
-   INVALID_CLUSTER : constant := 0;
 
    type FAT_Name is record
       Name : String (1 .. MAX_FILENAME_LENGTH);
@@ -509,7 +459,7 @@ private
    function OEM_Name (FS : FAT_Filesystem) return String
    is (FS.Disk_Parameters.OEM_Name);
 
-   function Bytes_Per_Block
+   function Block_Size
      (FS : FAT_Filesystem) return File_Size
    is (File_Size (FS.Disk_Parameters.Block_Size_In_Bytes));
 
@@ -517,9 +467,9 @@ private
      (FS : FAT_Filesystem) return Unsigned_8
    is (FS.Disk_Parameters.Blocks_Per_Cluster);
 
-   function Bytes_Per_Cluster
+   function Cluster_Size
      (FS : FAT_Filesystem) return File_Size
-   is (File_Size (FS.Blocks_Per_Cluster) * FS.Bytes_Per_Block);
+   is (File_Size (FS.Blocks_Per_Cluster) * FS.Block_Size);
 
    function Reserved_Blocks
      (FS : FAT_Filesystem) return Unsigned_16
@@ -533,10 +483,6 @@ private
      (FS : FAT_Filesystem) return Unsigned_32
    is (FS.Disk_Parameters.Number_Of_Blocks_Fat32);
 
-   function Removable_Drive
-     (FS : FAT_Filesystem) return Boolean
-   is (FS.Disk_Parameters.Removable_Drive);
-
    function FAT_Table_Size_In_Blocks
      (FS : FAT_Filesystem) return Unsigned_32
    is (FS.Disk_Parameters.Table_Size_Fat32);
@@ -544,10 +490,6 @@ private
    function Number_Of_Hidden_Blocks
      (FS : FAT_Filesystem) return Unsigned_32
    is (FS.Disk_Parameters.Hidden_Blocks);
-
-   function Drive_Number
-     (FS : FAT_Filesystem) return Unsigned_8
-   is (FS.Disk_Parameters.Drive_Number_Fat32);
 
    function Is_Volume
      (FS : FAT_Filesystem) return Boolean

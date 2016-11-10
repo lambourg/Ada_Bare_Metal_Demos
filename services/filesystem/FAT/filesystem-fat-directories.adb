@@ -192,13 +192,13 @@ package body Filesystem.FAT.Directories is
          return OK;
       end if;
 
-      while Offset > Parent.FS.Bytes_Per_Cluster loop
+      while Offset > Parent.FS.Cluster_Size loop
          Cluster := Parent.FS.Get_FAT (Cluster);
-         Offset := Offset - Parent.FS.Bytes_Per_Cluster;
+         Offset := Offset - Parent.FS.Cluster_Size;
       end loop;
 
-      Block     := Unsigned_32 (Offset / Parent.FS.Bytes_Per_Block);
-      Block_Off := Natural (Offset mod Parent.FS.Bytes_Per_Block);
+      Block     := Unsigned_32 (Offset / Parent.FS.Block_Size);
+      Block_Off := Natural (Offset mod Parent.FS.Block_Size);
 
       Ret := Parent.FS.Ensure_Block
         (Parent.FS.Cluster_To_Block (Cluster) + Block);
@@ -257,7 +257,7 @@ package body Filesystem.FAT.Directories is
       end if;
 
       Block_Off := Natural
-        (File_Size (Dir.Current_Index * 32) mod Dir.FS.Bytes_Per_Block);
+        (File_Size (Dir.Current_Index * 32) mod Dir.FS.Block_Size);
 
       --  Check if we're on a block boundare
       if Unsigned_32 (Block_Off) = 0 and then Dir.Current_Index /= 0 then
@@ -667,7 +667,7 @@ package body Filesystem.FAT.Directories is
          if Long_Name (Child_Ent) = Long_Name (Ent) then
             Block_Off := Natural
               ((File_Size (Handle.Current_Index - 1) * 32)
-               mod Dir.FS.Bytes_Per_Block);
+               mod Dir.FS.Block_Size);
             --  Mark the entry as deleted: first basename character set to
             --  16#E5#
             Handle.FS.Window (Block_Off) := 16#E5#;
@@ -691,7 +691,7 @@ package body Filesystem.FAT.Directories is
    is
       B_Per_Cluster : constant File_Size :=
                         File_Size (Ent.FS.Blocks_Per_Cluster) *
-                          Ent.FS.Bytes_Per_Block;
+                          Ent.FS.Block_Size;
       Size          : File_Size := Ent.Size;
       Current       : Cluster_Type := Ent.Start_Cluster;
       Next          : Cluster_Type;
@@ -1168,7 +1168,7 @@ package body Filesystem.FAT.Directories is
             --  Retrieve the block number relative to the first block of the
             --  directory content
             N_Blocks := Unsigned_32
-              (File_Size (Index) * 32 / Parent.FS.Bytes_Per_Block);
+              (File_Size (Index) * 32 / Parent.FS.Block_Size);
 
             --  Check if we need to change cluster
             while N_Blocks >=
@@ -1199,7 +1199,7 @@ package body Filesystem.FAT.Directories is
                end if;
 
                Block_Off := Natural
-                 ((File_Size (Index) * 32) mod Parent.FS.Bytes_Per_Block);
+                 ((File_Size (Index) * 32) mod Parent.FS.Block_Size);
 
                if J > 1 and then Block_Off = 0 then
                   Status := Parent.FS.Write_Window;

@@ -1,4 +1,4 @@
-SFP_DEMOS=balls conway fractals sdcard wolf
+SFP_DEMOS=balls conway fractals sdcard wav_player wolf
 FULL_DEMOS=2048 $(SFP_DEMOS)
 
 BUILD=Production
