@@ -21,19 +21,11 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Filesystem.FAT;
 with Wav_Reader;
 
 package Wav_DB is
 
-   type Wav_File is record
-      Info : Wav_Reader.Metadata_Info;
-      Path : Filesystem.FAT.FAT_Path;
-   end record;
-
-   procedure Add_File
-     (FS   : Filesystem.FAT.FAT_Filesystem_Access;
-      Path : Filesystem.FAT.FAT_Path);
+   procedure Add_File (Path : String);
 
    procedure Update_DB;
    --  Set up the proper indexes internal to the DB.
@@ -43,9 +35,12 @@ package Wav_DB is
    function New_Selection return Selection;
 
    function Num_Tracks (S : Selection) return Natural;
-   function Track
+   function Track_Path
      (S   : Selection;
-      Num : Natural) return Wav_File;
+      Num : Natural) return String;
+   function Track_Info
+     (S   : Selection;
+      Num : Natural) return Wav_Reader.Metadata_Info;
 
    function Num_Artists (S : Selection) return Natural;
    function Artist
@@ -65,7 +60,7 @@ package Wav_DB is
 
 private
 
-   MAX_FILES : constant := 50;
+   MAX_FILES : constant := 500;
    subtype Track_Index is Natural range 0 .. MAX_FILES;
    subtype Valid_Track_Index is Track_Index range 1 .. MAX_FILES;
    Invalid_Track : constant Track_Index := 0;

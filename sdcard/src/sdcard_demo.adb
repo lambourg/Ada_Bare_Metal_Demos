@@ -35,8 +35,7 @@ with STM32.Board;                use STM32.Board;
 with BMP_Fonts;
 
 with Filesystem;                 use Filesystem;
-with Filesystem.MBR;             use Filesystem.MBR;
-with Filesystem.FAT;             use Filesystem.FAT;
+with Filesystem.VFS;             use Filesystem.VFS;
 
 procedure SDCard_Demo
 is
@@ -47,66 +46,63 @@ is
    Capacity      : Unsigned_64;
    Error_State   : Boolean := False;
 
-   MBR           : Master_Boot_Record;
-   FS_All        : aliased Filesystem.FAT.FAT_Filesystem;
-   FS            : constant FAT_Filesystem_Access := FS_All'Unchecked_Access;
-
    Status        : Filesystem.Status_Code;
 
    Y             : Natural := 0;
 
-   Current_Directory : FAT_Path := -"/";
-
-   procedure Display_Current_Dir
-     (Dir_Entry : Directory_Entry);
+   procedure Display_Current_Dir (Path : String);
 
    -------------------------
    -- Display_Current_Dir --
    -------------------------
 
-   procedure Display_Current_Dir
-     (Dir_Entry : Directory_Entry)
+   procedure Display_Current_Dir (Path : String)
    is
-      Dir : Directory_Handle;
-      E   : Directory_Entry;
+      Dir    : Directory_Handle;
+      E      : Node_Access;
+      Status : Status_Code;
    begin
-      if Open (Dir_Entry, Dir) /= OK then
+      Dir := Open (Path, Status);
+      if Status /= OK then
          Draw_String
            (Display.Get_Hidden_Buffer (1),
             (0, Y),
-            "!!! Error reading the directory " & (-Current_Directory),
+            "!!! Error reading the directory " & Path,
             BMP_Fonts.Font12x12,
             HAL.Bitmap.Red,
             Transparent);
          Display.Update_Layer (1, True);
-         Close (FS);
          Y := Y + 13;
          Error_State := True;
       end if;
 
-      while not Error_State and then Read (Dir, E) = OK loop
-         if not Is_Hidden (E)
-           and then -Long_Name (E) /= "."
-           and then -Long_Name (E) /= ".."
+      while not Error_State loop
+         E := Read (Dir, Status);
+
+         if Status = No_More_Entries then
+            exit;
+         end if;
+
+         if Status /= OK then
+            Error_State := True;
+            exit;
+         end if;
+
+         if not E.Is_Hidden
+           and then E.Basename /= "."
+           and then E.Basename /= ".."
          then
             Draw_String
               (Display.Get_Hidden_Buffer (1),
                (0, Y),
-               -Current_Directory & (-Long_Name (E)),
+               Path & E.Basename,
                BMP_Fonts.Font12x12,
-               (if Is_Subdirectory (E) then Grey else Black),
+               (if E.Is_Subdirectory then Grey else Black),
                Transparent);
             Y := Y + 16;
 
-            if Is_Subdirectory (E) then
-               if -Long_Name (E) /= "."
-                 and then -Long_Name (E) /= ".."
-               then
-                  Current_Directory :=
-                    Current_Directory & Long_Name (E) & FAT_Path'(-"/");
-                  Display_Current_Dir (E);
-                  To_Parent (Current_Directory);
-               end if;
+            if E.Is_Subdirectory then
+               Display_Current_Dir (Path & E.Basename & "/");
             end if;
          end if;
       end loop;
@@ -172,77 +168,47 @@ begin
             end if;
          end loop;
 
-         Status := Read (SDCard_Device'Access, MBR);
+         Status := Mount_Drive ("sdcard", SDCard_Device'Access);
 
-         if Status /= OK then
+         if Status = No_MBR_Found then
             Error_State := True;
             Draw_String
               (Display.Get_Hidden_Buffer (1),
                (0, Y),
-               "Not an MBR partition system",
+               "Not an MBR partition system: " & Status'Img,
                BMP_Fonts.Font12x12,
                HAL.Bitmap.Red,
                Transparent);
+            Display.Update_Layer (1, True);
             Y := Y + 13;
 
-         else
-            for P in Partition_Number'Range loop
-               Status := No_Partition_Found;
-
-               if Valid (MBR, P) then
-                  Status := Open
-                    (SDCard_Device'Access,
-                     LBA (MBR, P),
-                     FS.all);
-                  exit;
-               end if;
-            end loop;
-         end if;
-
-         if Status /= OK then
-            if not Error_State then
-               Error_State := True;
-
-               Draw_String
-                 (Display.Get_Hidden_Buffer (1),
-                  (0, Y),
-                  "No valid partition found",
-                  BMP_Fonts.Font12x12,
-                  HAL.Bitmap.Red,
-                  Transparent);
-               Display.Update_Layer (1, True);
-               Y := Y + 13;
-            end if;
-
-         else
+         elsif Status = No_Filesystem then
+            Error_State := True;
             Draw_String
               (Display.Get_Hidden_Buffer (1),
                (0, Y),
-               "FAT FS: " & OEM_Name (FS.all),
+               "No valid partition found",
                BMP_Fonts.Font12x12,
-               HAL.Bitmap.Dark_Green,
+               HAL.Bitmap.Red,
                Transparent);
+            Display.Update_Layer (1, True);
             Y := Y + 13;
+
+         elsif Status /= OK then
+            Error_State := True;
             Draw_String
               (Display.Get_Hidden_Buffer (1),
                (0, Y),
-               Volume_Label (FS.all) & " (" & File_System_Type (FS.all) & "):",
+               "Error when mounting the sdcard: " & Status'Img,
                BMP_Fonts.Font12x12,
-               Dark_Red,
+               HAL.Bitmap.Red,
                Transparent);
-            Y := Y + 25;
-            Display.Update_Layer (1);
-
-            Current_Directory := -"/";
-
-            declare
-               E : constant Directory_Entry := Root_Entry (FS);
-            begin
-               Display_Current_Dir (E);
-            end;
-
-            Close (FS);
+            Display.Update_Layer (1, True);
+            Y := Y + 13;
          end if;
+
+         Display_Current_Dir ("/sdcard/");
+         Status := Unmount ("sdcard");
 
          Display.Update_Layer (1);
 

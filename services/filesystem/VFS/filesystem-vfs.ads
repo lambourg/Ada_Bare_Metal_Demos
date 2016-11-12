@@ -21,73 +21,47 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Interfaces; use Interfaces;
+--  Simple virtual file system allowing to mount actual fs into a virtual
+--  fs environment composed of 1 level of virtual directories.
 
-package body Filesystem.MBR is
+package Filesystem.VFS is
 
-   ----------
-   -- Read --
-   ----------
+   MAX_MOUNT_POINTS : constant := 2;
+   MAX_MOUNT_NAME_LENGTH : constant := 128;
 
-   function Read
-     (Controller  : HAL.Block_Drivers.Block_Driver_Ref;
-      MBR         : out Master_Boot_Record) return Status_Code
-   is
-      Tmp  : aliased Master_Boot_Record;
-      Data : aliased HAL.Byte_Array (1 .. 512) with Address => Tmp'Address;
-   begin
-      --  Let's read the MBR: located in the first block
-      if not Controller.Read (0, Data) then
-         return Disk_Error;
-      end if;
+   subtype Mount_Path is String
+     with Dynamic_Predicate => Mount_Path'Length <= MAX_MOUNT_NAME_LENGTH;
 
-      MBR := Tmp;
+   function Mount_Volume
+     (Mount_Point : Mount_Path;
+      FS          : Filesystem_Access) return Status_Code;
 
-      if MBR.Signature /= 16#AA55# then
-         return No_MBR_Found;
-      end if;
+   function Mount_Drive
+     (Mount_Point : Mount_Path;
+      Device      : HAL.Block_Drivers.Block_Driver_Ref) return Status_Code;
 
-      return OK;
-   end Read;
+   function Unmount (Mount_Point : Mount_Path) return Status_Code;
 
-   ------------
-   -- Active --
-   ------------
+   function Open
+     (Path   : String;
+      Status : out Status_Code)
+      return Directory_Handle;
 
-   function Active  (MBR : Master_Boot_Record;
-                     P   : Partition_Number) return Boolean
-   is ((MBR.P_Entries (P).Status and 16#80#) = 16#80#);
+   function Open
+     (Path   : String;
+      Mode   : File_Mode;
+      Status : out Status_Code)
+      return File_Handle;
 
-   -----------
-   -- Valid --
-   -----------
+private
 
-   function Valid   (MBR : Master_Boot_Record;
-                     P   : Partition_Number) return Boolean
-   is (MBR.P_Entries (P).Num_Sectors > 0);
+   type Mount_Record is record
+      Is_Free  : Boolean := True;
+      Name     : String (1 .. MAX_MOUNT_NAME_LENGTH);
+      Name_Len : Positive;
+      FS       : Filesystem_Access;
+   end record;
 
-   --------------
-   -- Get_Type --
-   --------------
+   type Mount_Array is array (1 .. MAX_MOUNT_POINTS) of Mount_Record;
 
-   function Get_Type (MBR : Master_Boot_Record;
-                      P   : Partition_Number) return Partition_Type
-   is (MBR.P_Entries (P).P_Type);
-
-   ---------
-   -- LBA --
-   ---------
-
-   function LBA     (MBR : Master_Boot_Record;
-                     P   : Partition_Number) return Interfaces.Unsigned_32
-   is (MBR.P_Entries (P).LBA);
-
-   -------------
-   -- Sectors --
-   -------------
-
-   function Sectors (MBR : Master_Boot_Record;
-                     P   : Partition_Number) return Interfaces.Unsigned_32
-   is (MBR.P_Entries (P).Num_Sectors);
-
-end Filesystem.MBR;
+end Filesystem.VFS;

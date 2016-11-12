@@ -21,73 +21,31 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Interfaces; use Interfaces;
+package body Filesystem is
 
-package body Filesystem.MBR is
+   ------------------
+   -- Generic_Read --
+   ------------------
 
-   ----------
-   -- Read --
-   ----------
-
-   function Read
-     (Controller  : HAL.Block_Drivers.Block_Driver_Ref;
-      MBR         : out Master_Boot_Record) return Status_Code
+   function Generic_Read
+     (File  : File_Handle;
+      Value : out T) return Status_Code
    is
-      Tmp  : aliased Master_Boot_Record;
-      Data : aliased HAL.Byte_Array (1 .. 512) with Address => Tmp'Address;
+      L : File_Size := T'Size / 8;
    begin
-      --  Let's read the MBR: located in the first block
-      if not Controller.Read (0, Data) then
-         return Disk_Error;
-      end if;
+      return File.Read (Value'Address, L);
+   end Generic_Read;
 
-      MBR := Tmp;
+   -------------------
+   -- Generic_Write --
+   -------------------
 
-      if MBR.Signature /= 16#AA55# then
-         return No_MBR_Found;
-      end if;
+   function Generic_Write
+     (File  : File_Handle;
+      Value : T) return Status_Code
+   is
+   begin
+      return File.Write (Value'Address, T'Size / 8);
+   end Generic_Write;
 
-      return OK;
-   end Read;
-
-   ------------
-   -- Active --
-   ------------
-
-   function Active  (MBR : Master_Boot_Record;
-                     P   : Partition_Number) return Boolean
-   is ((MBR.P_Entries (P).Status and 16#80#) = 16#80#);
-
-   -----------
-   -- Valid --
-   -----------
-
-   function Valid   (MBR : Master_Boot_Record;
-                     P   : Partition_Number) return Boolean
-   is (MBR.P_Entries (P).Num_Sectors > 0);
-
-   --------------
-   -- Get_Type --
-   --------------
-
-   function Get_Type (MBR : Master_Boot_Record;
-                      P   : Partition_Number) return Partition_Type
-   is (MBR.P_Entries (P).P_Type);
-
-   ---------
-   -- LBA --
-   ---------
-
-   function LBA     (MBR : Master_Boot_Record;
-                     P   : Partition_Number) return Interfaces.Unsigned_32
-   is (MBR.P_Entries (P).LBA);
-
-   -------------
-   -- Sectors --
-   -------------
-
-   function Sectors (MBR : Master_Boot_Record;
-                     P   : Partition_Number) return Interfaces.Unsigned_32
-   is (MBR.P_Entries (P).Num_Sectors);
-
-end Filesystem.MBR;
+end Filesystem;

@@ -1,17 +1,22 @@
 ------------------------------------------------------------------------------
---                            Ada FAT FS Library                            --
+--                          Ada Filesystem Library                          --
 --                                                                          --
---                   Copyright (C) 2016, Jerome Lambourg                    --
+--                     Copyright (C) 2015-2016, AdaCore                     --
 --                                                                          --
 -- This library is free software;  you can redistribute it and/or modify it --
--- under terms of the  GNU Lesser General Public License  as published by   --
--- the Free Software  Foundation;  either version 3,  or (at your  option)  --
--- any later version. This library is distributed in the hope that it will  --
--- be useful, but WITHOUT ANY WARRANTY;  without even the implied warranty  --
--- of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                  --
+-- under terms of the  GNU General Public License  as published by the Free --
+-- Software  Foundation;  either version 3,  or (at your  option) any later --
+-- version. This library is distributed in the hope that it will be useful, --
+-- but WITHOUT ANY WARRANTY;  without even the implied warranty of MERCHAN- --
+-- TABILITY or FITNESS FOR A PARTICULAR PURPOSE.                            --
 --                                                                          --
--- You should have received a copy of the GNU Lesser General Public License --
--- along with this program; see the file lgpl-3.0.  If not, see             --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
 -- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 ------------------------------------------------------------------------------
@@ -19,28 +24,28 @@
 private package Filesystem.FAT.Directories is
 
    function Find
-     (FS     : FAT_Filesystem_Access;
-      Path   : FAT_Path;
-      DEntry : out Directory_Entry) return Status_Code;
+     (FS     : access FAT_Filesystem;
+      Path   : String;
+      DEntry : out FAT_Node) return Status_Code;
 
    function Find
-     (Parent   : Directory_Handle;
+     (Parent   : access FAT_Directory_Handle;
       Filename : FAT_Name;
-      DEntry   : out Directory_Entry) return Status_Code;
+      DEntry   : out FAT_Node) return Status_Code;
 
    function Find
-     (Parent   : Directory_Entry;
+     (Parent   : FAT_Node;
       Filename : FAT_Name;
-      DEntry   : out Directory_Entry) return Status_Code;
+      DEntry   : out FAT_Node) return Status_Code;
 
-   function Root_Entry (FS : FAT_Filesystem_Access) return Directory_Entry;
+   function Root_Entry (FS : not null access FAT_Filesystem) return FAT_Node;
 
    function Read
-     (Dir    : in out Directory_Handle;
-      DEntry : out Directory_Entry) return Status_Code;
+     (Dir    : access FAT_Directory_Handle;
+      DEntry : out FAT_Node) return Status_Code;
 
    function Next_Entry
-     (Dir    : in out Directory_Handle;
+     (Dir    : access FAT_Directory_Handle;
       DEntry : out    FAT_Directory_Entry) return Status_Code;
    --  Returns the next entry for Directory_Handle.
 
@@ -49,50 +54,48 @@ private package Filesystem.FAT.Directories is
    -------------------------------------
 
    function Create_Subdir
-     (Dir     : Directory_Entry;
+     (Dir     : FAT_Node;
       Name    : FAT_Name;
-      New_Dir : out Directory_Entry) return Status_Code;
+      New_Dir : out FAT_Node) return Status_Code;
 
    function Create_File_Node
-     (Dir      : Directory_Entry;
+     (Dir      : FAT_Node;
       Name     : FAT_Name;
-      New_File : out Directory_Entry) return Status_Code;
+      New_File : out FAT_Node) return Status_Code;
 
    function Delete_Subdir
-     (Dir       : Directory_Entry;
+     (Dir       : FAT_Node;
       Recursive : Boolean) return Status_Code;
 
    function Delete_Entry
-     (Dir : Directory_Entry;
-      Ent : Directory_Entry) return Status_Code;
+     (Dir : FAT_Node;
+      Ent : FAT_Node) return Status_Code;
    --  Mark the clusters related to Ent as free
 
    function Adjust_Clusters
-     (Ent : Directory_Entry) return Status_Code;
+     (Ent : FAT_Node) return Status_Code;
    --  Adjust the number of clusters depending on Ent size
 
-   --------------------------------
-   -- Directory_Entry properties --
-   --------------------------------
+   -------------------------
+   -- FAT_Node properties --
+   -------------------------
 
    procedure Set_Size
-     (E    : in out Directory_Entry;
-      Size : File_Size);
+     (E    : in out FAT_Node;
+      Size : FAT_File_Size);
 
    function Update_Entry
-     (Parent : Directory_Entry;
-      Value  : in out Directory_Entry) return Status_Code;
-
-private
+     (Parent : FAT_Node;
+      Value  : in out FAT_Node) return Status_Code;
 
    ---------------------------
    -- Low_Level subprograms --
    ---------------------------
 
    function Allocate_Entry
-     (Parent     : in out Directory_Handle;
+     (Parent     : access FAT_Directory_Handle;
       Name       : FAT_Name;
       Attributes : FAT_Directory_Entry_Attribute;
-      E          : out Directory_Entry) return Status_Code;
+      E          : out FAT_Node) return Status_Code;
 
 end Filesystem.FAT.Directories;

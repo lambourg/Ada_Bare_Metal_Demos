@@ -1,36 +1,38 @@
 ------------------------------------------------------------------------------
---                            Ada FAT FS Library                            --
+--                          Ada Filesystem Library                          --
 --                                                                          --
---                   Copyright (C) 2016, Jerome Lambourg                    --
+--                     Copyright (C) 2015-2016, AdaCore                     --
 --                                                                          --
 -- This library is free software;  you can redistribute it and/or modify it --
--- under terms of the  GNU Lesser General Public License  as published by   --
--- the Free Software  Foundation;  either version 3,  or (at your  option)  --
--- any later version. This library is distributed in the hope that it will  --
--- be useful, but WITHOUT ANY WARRANTY;  without even the implied warranty  --
--- of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                  --
+-- under terms of the  GNU General Public License  as published by the Free --
+-- Software  Foundation;  either version 3,  or (at your  option) any later --
+-- version. This library is distributed in the hope that it will be useful, --
+-- but WITHOUT ANY WARRANTY;  without even the implied warranty of MERCHAN- --
+-- TABILITY or FITNESS FOR A PARTICULAR PURPOSE.                            --
 --                                                                          --
--- You should have received a copy of the GNU Lesser General Public License --
--- along with this program; see the file lgpl-3.0.  If not, see             --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
 -- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Filesystem.FAT;             use Filesystem.FAT;
-with Filesystem.FAT.Directories; use Filesystem.FAT.Directories;
+with Filesystem.FAT.Directories;
 
 package body Filesystem.FAT.Files is
 
-   type File_Data is array (File_Size range <>) of Interfaces.Unsigned_8;
-
-   function Absolute_Block (File : File_Handle) return Unsigned_32
+   function Absolute_Block (File : access FAT_File_Handle) return Unsigned_32
      with Inline_Always;
 
-   function Ensure_Buffer (File : File_Handle) return Status_Code
+   function Ensure_Buffer (File : access FAT_File_Handle) return Status_Code
      with Inline_Always;
 
    function Next_Block
-     (File : File_Handle;
+     (File : access FAT_File_Handle;
       Inc  : Positive := 1) return Status_Code
      with Inline_Always;
 
@@ -38,14 +40,14 @@ package body Filesystem.FAT.Files is
    -- Absolute_Block --
    --------------------
 
-   function Absolute_Block (File : File_Handle) return Unsigned_32
+   function Absolute_Block (File : access FAT_File_Handle) return Unsigned_32
    is (File.FS.Cluster_To_Block (File.Current_Cluster) + File.Current_Block);
 
    -------------------
    -- Ensure_Buffer --
    -------------------
 
-   function Ensure_Buffer (File : File_Handle) return Status_Code
+   function Ensure_Buffer (File : access FAT_File_Handle) return Status_Code
    is
    begin
       if not File.Buffer_Filled and then File.Mode /= Write_Mode then
@@ -69,11 +71,12 @@ package body Filesystem.FAT.Files is
    ----------------
 
    function Next_Block
-     (File : File_Handle;
+     (File : access FAT_File_Handle;
       Inc  : Positive := 1) return Status_Code
    is
       Todo   : Unsigned_32 := Unsigned_32 (Inc);
       Status : Status_Code;
+      Next   : Cluster_Type;
    begin
       --  First take care of uninitialized handlers:
 
@@ -120,12 +123,12 @@ package body Filesystem.FAT.Files is
          if File.Current_Block = Unsigned_32 (File.FS.Blocks_Per_Cluster) then
             --  Move on to the next cluster
             File.Current_Block   := 0;
+            Next := File.FS.Get_FAT (File.Current_Cluster);
 
-            if not File.FS.Is_Last_Cluster
-              (File.FS.Get_FAT (File.Current_Cluster))
-            then
+            if not File.FS.Is_Last_Cluster (Next) then
                --  Nominal case: there's a next cluster
-               File.Current_Cluster := File.FS.Get_FAT (File.Current_Cluster);
+               File.Current_Cluster := Next;
+
             elsif File.Mode /= Read_Mode then
                --  Allocate a new cluster
                File.Current_Cluster :=
@@ -134,6 +137,7 @@ package body Filesystem.FAT.Files is
                if File.Current_Cluster = INVALID_CLUSTER then
                   return Disk_Full;
                end if;
+
             else
                --  Invalid operation: should not happen, so raise an internal
                --  error
@@ -145,27 +149,27 @@ package body Filesystem.FAT.Files is
       return OK;
    end Next_Block;
 
-   ---------------
-   -- File_Open --
-   ---------------
+   ----------
+   -- Open --
+   ----------
 
    function Open
-     (Parent : Directory_Entry;
+     (Parent : FAT_Node;
       Name   : FAT_Name;
       Mode   : File_Mode;
-      File   : File_Handle) return Status_Code
+      File   : access FAT_File_Handle) return Status_Code
    is
-      Node : Directory_Entry;
+      Node : FAT_Node;
       Ret  : Status_Code;
    begin
-      Ret := Find (Parent, Name, Node);
+      Ret := Directories.Find (Parent, Name, Node);
 
       if Ret /= OK then
          if Mode = Read_Mode then
             return No_Such_File;
          end if;
 
-         Ret := Create_File_Node (Parent, Name, Node);
+         Ret := Directories.Create_File_Node (Parent, Name, Node);
       end if;
 
       if Ret /= OK then
@@ -173,53 +177,52 @@ package body Filesystem.FAT.Files is
       end if;
 
       if Mode = Write_Mode then
-         Set_Size (Node, 0);
+         Directories.Set_Size (Node, 0);
          --  Free the cluster chain if > 1 cluster
-         Ret := Adjust_Clusters (Node);
+         Ret := Directories.Adjust_Clusters (Node);
 
          if Ret /= OK then
             return Ret;
          end if;
       end if;
 
-      File.all :=
-        (Is_Free         => False,
-         FS              => Get_FS (Node),
-         Mode            => Mode,
-         Current_Cluster => Get_Start_Cluster (Node),
-         Current_Block   => 0,
-         Buffer          => (others => 0),
-         Buffer_Filled   => False,
-         Buffer_Dirty    => False,
-         Bytes_Total     => 0,
-         D_Entry         => Node,
-         Parent          => Parent);
+      File.Is_Free         := False;
+      File.FS              := Node.FS;
+      File.Mode            := Mode;
+      File.Current_Cluster := Node.Start_Cluster;
+      File.Current_Block   := 0;
+      File.Buffer          := (others => 0);
+      File.Buffer_Filled   := False;
+      File.Buffer_Dirty    := False;
+      File.Bytes_Total     := 0;
+      File.D_Entry         := Node;
+      File.Parent          := Parent;
 
       return OK;
    end Open;
 
-   ---------------
-   -- File_Read --
-   ---------------
+   ----------
+   -- Read --
+   ----------
 
    function Read
-     (File   : File_Handle;
+     (File   : access FAT_File_Handle;
       Addr   : System.Address;
-      Length : File_Size) return File_Size
+      Length : in out FAT_File_Size) return Status_Code
    is
       Data        : File_Data (1 .. Length) with Import, Address => Addr;
       --  Byte array representation of the buffer to read
 
-      Idx         : File_Size;
+      Idx         : FAT_File_Size;
       --  Index from the current block
 
-      Data_Length : File_Size := Data'Length;
+      Data_Length : FAT_File_Size := Data'Length;
       --  The total length to read
 
-      Data_Idx    : File_Size := Data'First;
+      Data_Idx    : FAT_File_Size := Data'First;
       --  Index into the data array of the next bytes to read
 
-      R_Length    : File_Size;
+      R_Length    : FAT_File_Size;
       --  The size of the data to read in one operation
 
       N_Blocks    : Unsigned_32;
@@ -227,25 +230,33 @@ package body Filesystem.FAT.Files is
       Status      : Status_Code;
 
    begin
-      if File.Is_Free
-        or else File.Mode = Write_Mode
-        or else File.Bytes_Total = Get_Size (File.D_Entry)
-        or else Data_Length = 0
-      then
-         return 0;
+      if File.Is_Free then
+         Length := 0;
+         return Invalid_Parameter;
       end if;
 
-      if File.Mode = Read_Write_Mode then
-         Status := Flush (File);
+      if File.Mode = Write_Mode then
+         Length := 0;
+         return Access_Denied;
+      end if;
 
-         if Status /= OK then
-            return 0;
-         end if;
+      if File.Bytes_Total = File.D_Entry.Size
+        or else Data_Length = 0
+      then
+         Length := 0;
+         return OK;
+      end if;
+
+      Status := Flush (File);
+
+      if Status /= OK then
+         Length := 0;
+         return Status;
       end if;
 
       --  Clamp the number of data to read to the size of the file
-      Data_Length := File_Size'Min
-        (Get_Size (File.D_Entry) - File.Bytes_Total,
+      Data_Length := FAT_File_Size'Min
+        (File.D_Entry.Size - File.Bytes_Total,
          Data_Length);
 
       loop
@@ -259,30 +270,31 @@ package body Filesystem.FAT.Files is
             if Data'Alignment mod 4 = 0 then
                --  User data is aligned on words: we can directly perform DMA
                --  transfers to it
-               N_Blocks :=
-                 Unsigned_32 (Data_Length / File.FS.Block_Size);
 
-               if N_Blocks + File.Current_Block >
-                 Unsigned_32 (File.FS.Blocks_Per_Cluster)
-               then
-                  N_Blocks :=
-                    Unsigned_32 (File.FS.Blocks_Per_Cluster) -
-                    File.Current_Block;
-               end if;
+               --  Read as many blocks as possible withing the current cluster
+               N_Blocks := Unsigned_32'Min
+                 (Unsigned_32 (Data_Length / File.FS.Block_Size),
+                  Unsigned_32 (File.FS.Blocks_Per_Cluster) -
+                      File.Current_Block);
 
                if not File.FS.Controller.Read
                  (Absolute_Block (File),
                   HAL.Byte_Array
-                    (Data (Data_Idx ..
-                         Data_Idx + File_Size (N_Blocks) * 512 - 1)))
+                    (Data
+                      (Data_Idx ..
+                       Data_Idx +
+                         FAT_File_Size (N_Blocks) * File.FS.Block_Size - 1)))
                then
-                  return Data_Idx - Data'First;
+                  --  Read error: return the number of data read so far
+                  Length := Data_Idx - Data'First;
+                  return Disk_Error;
                end if;
 
                Status := Next_Block (File, Positive (N_Blocks));
 
                if Status /= OK then
-                  return Data_Idx - Data'First;
+                  Length := Data_Idx - Data'First;
+                  return Status;
                end if;
 
             else
@@ -293,9 +305,12 @@ package body Filesystem.FAT.Files is
                N_Blocks := 1;
 
                --  Fill the buffer
-               if Ensure_Buffer (File) /= OK then
+               Status := Ensure_Buffer (File);
+
+               if Status /= OK then
                   --  read error: return the number of bytes read so far
-                  return Data_Idx - Data'First;
+                  Length := Data_Idx - Data'First;
+                  return Status;
                end if;
 
                Data (Data_Idx .. Data_Idx + 511) := File_Data (File.Buffer);
@@ -303,24 +318,28 @@ package body Filesystem.FAT.Files is
                Status := Next_Block (File);
 
                if Status /= OK then
-                  return Data_Idx - Data'First;
+                  Length := Data_Idx - Data'First;
+                  return Status;
                end if;
             end if;
 
-            Data_Idx := Data_Idx + File_Size (N_Blocks) * 512;
+            Data_Idx := Data_Idx + FAT_File_Size (N_Blocks) * 512;
             File.Bytes_Total :=
-              File.Bytes_Total + File_Size (N_Blocks) * 512;
-            Data_Length := Data_Length - File_Size (N_Blocks) * 512;
+              File.Bytes_Total + FAT_File_Size (N_Blocks) * 512;
+            Data_Length := Data_Length - FAT_File_Size (N_Blocks) * 512;
 
          else
             --  Not aligned on a block, or less than 512 bytes to read
             --  We thus need to use our internal buffer.
-            if Ensure_Buffer (File) /= OK then
+            Status := Ensure_Buffer (File);
+
+            if Status /= OK then
                --  read error: return the number of bytes read so far
-               return Data_Idx - Data'First;
+               Length := Data_Idx - Data'First;
+               return Status;
             end if;
 
-            R_Length := File_Size'Min (File.Buffer'Length - Idx,
+            R_Length := FAT_File_Size'Min (File.Buffer'Length - Idx,
                                        Data_Length);
             Data (Data_Idx .. Data_Idx + R_Length - 1) := File_Data
               (File.Buffer (Natural (Idx) .. Natural (Idx + R_Length - 1)));
@@ -333,7 +352,8 @@ package body Filesystem.FAT.Files is
                Status := Next_Block (File);
 
                if Status /= OK then
-                  return Data_Idx - Data'First;
+                  Length := Data_Idx - Data'First;
+                  return Status;
                end if;
             end if;
          end if;
@@ -341,7 +361,7 @@ package body Filesystem.FAT.Files is
          exit when Data_Length = 0;
       end loop;
 
-      return Data_Idx - Data'First;
+      return OK;
    end Read;
 
    -----------
@@ -349,27 +369,27 @@ package body Filesystem.FAT.Files is
    -----------
 
    function Write
-     (File   : File_Handle;
+     (File   : access FAT_File_Handle;
       Addr   : System.Address;
-      Length : File_Size) return Status_Code
+      Length : FAT_File_Size) return Status_Code
    is
-      procedure Inc_Size (Amount : File_Size);
+      procedure Inc_Size (Amount : FAT_File_Size);
 
       Data        : aliased File_Data (1 .. Length) with Address => Addr;
       --  Byte array representation of the data to write
 
-      Idx         : File_Size;
+      Idx         : FAT_File_Size;
 
-      Data_Length : File_Size := Data'Length;
+      Data_Length : FAT_File_Size := Data'Length;
       --  The total length to read
 
-      Data_Idx    : File_Size := Data'First;
+      Data_Idx    : FAT_File_Size := Data'First;
       --  Index into the data array of the next bytes to write
 
-      N_Blocks    : File_Size;
+      N_Blocks    : FAT_File_Size;
       --  The number of blocks to read at once
 
-      W_Length    : File_Size;
+      W_Length    : FAT_File_Size;
       --  The size of the data to write in one operation
 
       Status      : Status_Code;
@@ -378,14 +398,14 @@ package body Filesystem.FAT.Files is
       -- Inc_Size --
       --------------
 
-      procedure Inc_Size (Amount : File_Size)
+      procedure Inc_Size (Amount : FAT_File_Size)
       is
       begin
          Data_Idx          := Data_Idx + Amount;
          File.Bytes_Total  := File.Bytes_Total + Amount;
          Data_Length       := Data_Length - Amount;
 
-         Set_Size (File.D_Entry, File.Bytes_Total);
+         Directories.Set_Size (File.D_Entry, File.Bytes_Total);
       end Inc_Size;
 
    begin
@@ -411,7 +431,7 @@ package body Filesystem.FAT.Files is
             return Disk_Error;
          end if;
 
-         W_Length := File_Size'Min
+         W_Length := FAT_File_Size'Min
            (File.Buffer'Length - Idx,
             Data'Length);
 
@@ -443,9 +463,9 @@ package body Filesystem.FAT.Files is
          --  we have at least one full block to write.
 
          --  Determine the number of full blocks we need to write:
-         N_Blocks := File_Size'Min
-           (File_Size (File.FS.Blocks_Per_Cluster) -
-                File_Size (File.Current_Block),
+         N_Blocks := FAT_File_Size'Min
+           (FAT_File_Size (File.FS.Blocks_Per_Cluster) -
+                FAT_File_Size (File.Current_Block),
             Data_Length / File.FS.Block_Size);
 
          --  Writing all blocks in one operation
@@ -492,8 +512,7 @@ package body Filesystem.FAT.Files is
    -----------
 
    function Flush
-     (File : File_Handle)
-      return Status_Code
+     (File : access FAT_File_Handle) return Status_Code
    is
    begin
       if File.Buffer_Dirty then
@@ -515,33 +534,33 @@ package body Filesystem.FAT.Files is
    ----------
 
    function Seek
-     (File   : in out File_Handle;
-      Amount : in out File_Size;
+     (File   : access FAT_File_Handle;
+      Amount : in out FAT_File_Size;
       Origin : Seek_Mode) return Status_Code
    is
       Status    : Status_Code;
-      New_Pos   : File_Size;
-      N_Blocks  : File_Size;
+      New_Pos   : FAT_File_Size;
+      N_Blocks  : FAT_File_Size;
 
    begin
       case Origin is
          when From_Start =>
-            if Amount > Size (File) then
-               Amount := Size (File);
+            if Amount > File.D_Entry.Size then
+               Amount := File.D_Entry.Size;
             end if;
 
             New_Pos := Amount;
 
          when From_End =>
-            if Amount > Size (File) then
-               Amount := Size (File);
+            if Amount > File.D_Entry.Size then
+               Amount := File.D_Entry.Size;
             end if;
 
-            New_Pos := Size (File) - Amount;
+            New_Pos := File.D_Entry.Size - Amount;
 
          when Forward =>
-            if Amount + File.Bytes_Total > Size (File) then
-               Amount := Size (File) - File.Bytes_Total;
+            if Amount + File.Bytes_Total > File.D_Entry.Size then
+               Amount := File.D_Entry.Size - File.Bytes_Total;
             end if;
 
             New_Pos := File.Bytes_Total + Amount;
@@ -589,12 +608,15 @@ package body Filesystem.FAT.Files is
    -- Close --
    -----------
 
-   procedure Close (File : in out File_Handle)
+   procedure Close (File : access FAT_File_Handle)
    is
-      Status : Status_Code with Unreferenced;
+      pragma Unreferenced (File);
    begin
-      Status := Update_Entry (File.Parent, File.D_Entry);
-      Status := Flush (File);
+      null;
+--        Status : Status_Code with Unreferenced;
+--     begin
+--        Status := Directories.Update_Entry (File.Parent, File.D_Entry);
+--        Status := Flush (File);
    end Close;
 
 end Filesystem.FAT.Files;

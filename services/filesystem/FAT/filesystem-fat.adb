@@ -1,17 +1,22 @@
 ------------------------------------------------------------------------------
---                            Ada FAT FS Library                            --
+--                          Ada Filesystem Library                          --
 --                                                                          --
---                   Copyright (C) 2016, Jerome Lambourg                    --
+--                     Copyright (C) 2015-2016, AdaCore                     --
 --                                                                          --
 -- This library is free software;  you can redistribute it and/or modify it --
--- under terms of the  GNU Lesser General Public License  as published by   --
--- the Free Software  Foundation;  either version 3,  or (at your  option)  --
--- any later version. This library is distributed in the hope that it will  --
--- be useful, but WITHOUT ANY WARRANTY;  without even the implied warranty  --
--- of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                  --
+-- under terms of the  GNU General Public License  as published by the Free --
+-- Software  Foundation;  either version 3,  or (at your  option) any later --
+-- version. This library is distributed in the hope that it will be useful, --
+-- but WITHOUT ANY WARRANTY;  without even the implied warranty of MERCHAN- --
+-- TABILITY or FITNESS FOR A PARTICULAR PURPOSE.                            --
 --                                                                          --
--- You should have received a copy of the GNU Lesser General Public License --
--- along with this program; see the file lgpl-3.0.  If not, see             --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
 -- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 ------------------------------------------------------------------------------
@@ -24,25 +29,25 @@ with Filesystem.FAT.Files;
 package body Filesystem.FAT is
 
    The_File_Handles :
-     array (1 .. MAX_FILE_HANDLES) of aliased File_Handle_Record;
+     array (1 .. MAX_FILE_HANDLES) of aliased FAT_File_Handle;
    Last_File_Handle : Natural := 0;
 
    The_Dir_Handles :
-     array (1 .. MAX_DIR_HANDLES) of aliased Directory_Handle_Record;
+     array (1 .. MAX_DIR_HANDLES) of aliased FAT_Directory_Handle;
    Last_Dir_Handle : Natural := 0;
 
-   function Find_Free_Handle return Directory_Handle;
-   function Find_Free_Handle return File_Handle;
+   function Find_Free_Handle return FAT_Directory_Handle_Access;
+   function Find_Free_Handle return FAT_File_Handle_Access;
 
    procedure Initialize_FS
-     (FS     : in out FAT_Filesystem;
+     (FS     : not null access FAT_Filesystem;
       Status : out Status_Code);
 
    ----------------------
    -- Find_Free_Handle --
    ----------------------
 
-   function Find_Free_Handle return Directory_Handle
+   function Find_Free_Handle return FAT_Directory_Handle_Access
    is
       Found : Boolean := False;
 
@@ -80,7 +85,7 @@ package body Filesystem.FAT is
    -- Find_Free_Handle --
    ----------------------
 
-   function Find_Free_Handle return File_Handle
+   function Find_Free_Handle return FAT_File_Handle_Access
    is
 
    begin
@@ -285,11 +290,11 @@ package body Filesystem.FAT is
    -- Is_Root --
    -------------
 
-   function Is_Root (Path : FAT_Path) return Boolean
+   function Is_Root (Path : String) return Boolean
    is
    begin
-      return Path.Len = 0 or else
-        (Path.Len = 1 and then Path.Name (1) = '/');
+      return Path'Length = 0 or else
+        (Path'Length = 1 and then Path (Path'First) = '/');
    end Is_Root;
 
    --------------
@@ -511,21 +516,21 @@ package body Filesystem.FAT is
    -- Open --
    ----------
 
-   function Open
+   overriding function Open
      (Controller  : HAL.Block_Drivers.Block_Driver_Ref;
       LBA         : Unsigned_32;
-      FS          : out FAT_Filesystem) return Status_Code
+      FS          : not null access FAT_Filesystem) return Status_Code
    is
       Status : Status_Code;
    begin
-      FS.Mounted     := True;
+      FS.Initialized := True;
       FS.Controller  := Controller;
       FS.LBA         := LBA;
 
       Initialize_FS (FS, Status);
 
       if Status /= OK then
-         FS.Mounted := False;
+         FS.Initialized := False;
 
          return Status;
       end if;
@@ -538,7 +543,7 @@ package body Filesystem.FAT is
    -------------------
 
    procedure Initialize_FS
-     (FS     : in out FAT_Filesystem;
+     (FS     : not null access FAT_Filesystem;
       Status : out Status_Code)
    is
       use type HAL.Byte_Array;
@@ -598,13 +603,15 @@ package body Filesystem.FAT is
              ((FS.Total_Number_Of_Blocks + FS.LBA - FS.Data_Area) /
                     Unsigned_32 (FS.Blocks_Per_Cluster));
       end;
+
+      FS.Root_Entry := Directories.Root_Entry (FS);
    end Initialize_FS;
 
    -----------
    -- Close --
    -----------
 
-   procedure Close (FS : FAT_Filesystem_Access)
+   overriding procedure Close (FS : not null access FAT_Filesystem)
    is
       File : File_Handle;
       Dir  : Directory_Handle;
@@ -632,7 +639,7 @@ package body Filesystem.FAT is
          FS.FSInfo_Changed := False;
       end if;
 
-      FS.Mounted := False;
+      FS.Initialized := False;
    end Close;
 
    ------------------
@@ -663,59 +670,88 @@ package body Filesystem.FAT is
    -- Root_Entry --
    ----------------
 
-   function Root_Entry (FS : FAT_Filesystem_Access) return Directory_Entry
+   function Root_Entry
+     (FS : access FAT_Filesystem) return access FAT_Node'Class
    is
    begin
-      return Directories.Root_Entry (FS);
+      return FS.Root_Entry'Unchecked_Access;
    end Root_Entry;
 
    ----------
    -- Open --
    ----------
 
-   function Open
-     (FS     : FAT_Filesystem_Access;
-      Path   : FAT_Path;
-      Handle : out Directory_Handle) return Status_Code
+   overriding function Open
+     (FS     : access FAT_Filesystem;
+      Path   : String;
+      Status : out Status_Code) return Directory_Handle
    is
-      E    : Directory_Entry;
-      Full : FAT_Path := Path;
-      Ret  : Status_Code;
+   begin
+      return Directory_Handle (FAT_Open (FS, Path, Status));
+   end Open;
+
+   --------------
+   -- FAT_Open --
+   --------------
+
+   function FAT_Open
+     (FS     : access FAT_Filesystem;
+      Path   : String;
+      Status : out Status_Code) return access FAT_Directory_Handle'Class
+   is
+      E      : aliased FAT_Node;
+      Full   : FAT_Path := -Path;
 
    begin
       Normalize (Full);
 
-      if not Is_Root (Path) then
-         Ret := Directories.Find (FS, Path, E);
+      if not Is_Root (-Full) then
+         Status := Directories.Find (FS, -Full, E);
 
-         if Ret /= OK then
-            return Ret;
+         if Status /= OK then
+            return null;
          end if;
 
       else
-         E := Directories.Root_Entry (FS);
+         E := FS.Root_Entry;
       end if;
 
-      return Open (E, Handle);
+      Status := OK;
+      return E.FAT_Open (Status);
+   end FAT_Open;
+
+   ----------
+   -- Open --
+   ----------
+
+   overriding function Open
+     (D_Entry : FAT_Node;
+      Status  : out Status_Code) return Directory_Handle
+   is
+   begin
+      return Directory_Handle (D_Entry.FAT_Open (Status));
    end Open;
 
    ----------
    -- Open --
    ----------
 
-   function Open
-     (D_Entry : Directory_Entry;
-      Handle  : out Directory_Handle) return Status_Code
+   function FAT_Open
+     (D_Entry : FAT_Node;
+      Status  : out Status_Code) return access FAT_Directory_Handle'Class
    is
+      Handle : FAT_Directory_Handle_Access;
    begin
       if not Is_Subdirectory (D_Entry) then
-         return No_Such_File;
+         Status := No_Such_File;
+         return null;
       end if;
 
       Handle := Find_Free_Handle;
 
       if Handle = null then
-         return Too_Many_Open_Files;
+         Status := Too_Many_Open_Files;
+         return null;
       end if;
 
       Handle.FS            := D_Entry.FS;
@@ -740,15 +776,16 @@ package body Filesystem.FAT is
       end if;
 
       Handle.Current_Cluster := Handle.Start_Cluster;
+      Status := OK;
 
-      return OK;
-   end Open;
+      return Handle;
+   end FAT_Open;
 
    -----------
    -- Reset --
    -----------
 
-   procedure Reset (Dir : in out Directory_Handle)
+   overriding procedure Reset (Dir : access FAT_Directory_Handle)
    is
    begin
       Dir.Current_Block   := Cluster_To_Block (Dir.FS.all, Dir.Start_Cluster);
@@ -760,17 +797,20 @@ package body Filesystem.FAT is
    -- Read --
    ----------
 
-   function Read
-     (Dir    : in out Directory_Handle;
-      DEntry : out Directory_Entry)
-      return Status_Code
-   is (Directories.Read (Dir, DEntry));
+   overriding function Read
+     (Dir    : access FAT_Directory_Handle;
+      Status : out Status_Code) return Node_Access
+   is
+   begin
+      Status := Directories.Read (Dir, Dir.Current_Node);
+      return Dir.Current_Node'Unchecked_Access;
+   end Read;
 
    -----------
    -- Close --
    -----------
 
-   procedure Close (Dir : in out Directory_Handle)
+   overriding procedure Close (Dir : access FAT_Directory_Handle)
    is
    begin
       Dir.FS              := null;
@@ -778,139 +818,142 @@ package body Filesystem.FAT is
       Dir.Start_Cluster   := 0;
       Dir.Current_Cluster := 0;
       Dir.Current_Block   := 0;
-
-      for H in The_Dir_Handles'Range loop
-         if The_Dir_Handles (H)'Access = Dir then
-            The_Dir_Handles (H).Is_Free := True;
-            Dir := null;
-            exit;
-         end if;
-      end loop;
+      Dir.Is_Free         := True;
    end Close;
 
    ----------
    -- Open --
    ----------
 
-   function Open
-     (FS     : FAT_Filesystem_Access;
-      Path   : FAT_Path;
+   overriding function Open
+     (FS     : access FAT_Filesystem;
+      Path   : String;
       Mode   : File_Mode;
-      Handle : out File_Handle) return Status_Code
+      Status : out Status_Code) return File_Handle
    is
-      Parent_E : Directory_Entry;
-      Status   : Status_Code;
+      Parent_E : FAT_Node;
 
    begin
       if Is_Root (Path) then
-         return No_Such_File;
+         Status := No_Such_File;
+         return null;
       end if;
 
-      Status := Directories.Find (FS, Parent (Path), Parent_E);
+      Status := Directories.Find (FS, -Parent (-Path), Parent_E);
 
       if Status /= OK then
-         return No_Such_File;
+         Status := No_Such_File;
+         return null;
       end if;
 
-      return Open (Parent_E, Basename (Path), Mode, Handle);
+      return Open (Parent => Parent_E,
+                   Name   => -Basename (-Path),
+                   Mode   => Mode,
+                   Status => Status);
    end Open;
 
    ----------
    -- Open --
    ----------
 
-   function Open
-     (Parent : Directory_Entry;
-      Name   : FAT_Name;
+   overriding function Open
+     (Parent : FAT_Node;
+      Name   : String;
       Mode   : File_Mode;
-      Handle : out File_Handle) return Status_Code
+      Status : out Status_Code) return File_Handle
    is
+      Handle : FAT_File_Handle_Access;
    begin
       Handle := Find_Free_Handle;
 
       if Handle = null then
-         return Too_Many_Open_Files;
+         Status := Too_Many_Open_Files;
+         return null;
       end if;
 
-      return Files.Open (Parent, Name, Mode, Handle);
+      Status := Files.Open (Parent, -Name, Mode, Handle);
+
+      return File_Handle (Handle);
    end Open;
 
    ----------
    -- Size --
    ----------
 
-   function Size (Handle : File_Handle) return File_Size
+   overriding function Size (File : access FAT_File_Handle) return File_Size
    is
    begin
-      return Files.Size (Handle);
+      return File_Size (File.D_Entry.Size);
    end Size;
 
    ----------
    -- Mode --
    ----------
 
-   function Mode (Handle : File_Handle) return File_Mode
+   overriding function Mode (File : access FAT_File_Handle) return File_Mode
    is
    begin
-      return Handle.Mode;
+      return File.Mode;
    end Mode;
 
    ----------
    -- Read --
    ----------
 
-   function Read
-     (Handle : in out File_Handle;
+   overriding function Read
+     (File   : access FAT_File_Handle;
       Addr   : System.Address;
-      Length : File_Size) return File_Size
+      Length : in out File_Size) return Status_Code
    is
+      L : FAT_File_Size := FAT_File_Size (Length);
+      Ret : Status_Code;
    begin
-      return Files.Read (Handle, Addr, Length);
+      Ret := Files.Read (File, Addr, L);
+      Length := File_Size (L);
+
+      return Ret;
    end Read;
 
-   ----------
-   -- Read --
-   ----------
-
-   procedure Generic_Read
-     (Handle : File_Handle;
-      Value  : out T)
-   is
-      Ret : File_Size with Unreferenced;
-   begin
-      Ret := Files.Read (Handle, Value'Address, T'Size / 8);
-   end Generic_Read;
+--     ----------
+--     -- Read --
+--     ----------
+--
+--     procedure Generic_Read
+--       (Handle : File_Handle;
+--        Value  : out T)
+--     is
+--        Ret : File_Size with Unreferenced;
+--     begin
+--        Ret := Files.Read (Handle, Value'Address, T'Size / 8);
+--     end Generic_Read;
 
    ------------
    -- Offset --
    ------------
 
-   function Offset
-     (Handle : in out File_Handle) return File_Size
-   is
-   begin
-      return Handle.Bytes_Total;
-   end Offset;
+   overriding function Offset
+     (File : access FAT_File_Handle) return File_Size
+   is (File_Size (File.Bytes_Total));
 
    ----------------
    -- File_Write --
    ----------------
 
-   function Write
-     (File   : in out File_Handle;
+   overriding function Write
+     (File   : access FAT_File_Handle;
       Addr   : System.Address;
       Length : File_Size) return Status_Code
    is
    begin
-      return Files.Write (File, Addr, Length);
+      return Files.Write (File, Addr, FAT_File_Size (Length));
    end Write;
 
    ----------------
    -- File_Flush --
    ----------------
 
-   function Flush
-     (File : in out File_Handle) return Status_Code
+   overriding function Flush
+     (File : access FAT_File_Handle) return Status_Code
    is
    begin
       return Files.Flush (File);
@@ -920,33 +963,29 @@ package body Filesystem.FAT is
    -- File_Seek --
    ---------------
 
-   function Seek
-     (File   : in out File_Handle;
-      Amount : in out File_Size;
-      Origin : Seek_Mode) return Status_Code
+   overriding function Seek
+     (File   : access FAT_File_Handle;
+      Origin : Seek_Mode;
+      Amount : in out File_Size) return Status_Code
    is
+      Num : FAT_File_Size := FAT_File_Size (Amount);
+      Ret : Status_Code;
    begin
-      return Files.Seek (File, Amount, Origin);
+      Ret := Files.Seek (File, Num, Origin);
+      Amount := File_Size (Num);
+
+      return Ret;
    end Seek;
 
    ----------------
    -- File_Close --
    ----------------
 
-   procedure Close (File : in out File_Handle)
+   overriding procedure Close (File : access FAT_File_Handle)
    is
    begin
       Files.Close (File);
-
-      for J in The_File_Handles'Range loop
-         if The_File_Handles (J)'Access = File then
-            The_File_Handles (J).Is_Free := True;
-
-            exit;
-         end if;
-      end loop;
-
-      File := null;
+      File.Is_Free := True;
    end Close;
 
    -------------
@@ -983,7 +1022,7 @@ package body Filesystem.FAT is
       end if;
 
       Idx :=
-        Natural (File_Size ((Cluster) * 4) mod FS.Block_Size);
+        Natural (FAT_File_Size ((Cluster) * 4) mod FS.Block_Size);
 
       return To_Cluster (FS.FAT_Window (Idx .. Idx + 3)) and 16#0FFF_FFFF#;
    end Get_FAT;
@@ -1023,7 +1062,7 @@ package body Filesystem.FAT is
          end if;
       end if;
 
-      Idx := Natural (File_Size (Cluster * 4) mod FS.Block_Size);
+      Idx := Natural (FAT_File_Size (Cluster * 4) mod FS.Block_Size);
 
       FS.FAT_Window (Idx .. Idx + 3) := From_Cluster (Value);
 

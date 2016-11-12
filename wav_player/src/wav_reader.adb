@@ -23,7 +23,7 @@
 
 with Ada.Unchecked_Conversion;
 
-with Filesystem.FAT; use Filesystem.FAT;
+with Filesystem;   use Filesystem;
 
 with HAL.Audio;    use HAL.Audio;
 
@@ -33,10 +33,11 @@ with STM32.Button; use STM32.Button;
 
 package body Wav_Reader is
 
-   subtype Buffer_Type is Audio_Buffer (1 .. 2 * 1024);
+   subtype Buffer_Type is Audio_Buffer (1 .. 4 * 1024);
    Buffer : aliased Buffer_Type := (others => 0);
 
    protected Buffer_Scheduler is
+      pragma Interrupt_Priority;
       entry Next_Index (Idx  : out Natural;
                         Len  : out Natural);
 
@@ -128,15 +129,15 @@ package body Wav_Reader is
    -----------------
 
    function Read_Header
-     (F    : in out Filesystem.FAT.File_Handle;
+     (F    : Filesystem.File_Handle;
       Info : out WAV_Info) return WAV_Status_Code
    is
       subtype ID is String (1 .. 4);
       subtype Block is String (1 .. 512);
-      procedure Read_Header is new Generic_Read (Header_Block);
-      procedure Read_RIFF is new Generic_Read (RIFF_Block);
-      procedure Read_Audio is new Generic_Read (Audio_Description_Block);
-      procedure Read_ID is new Generic_Read (ID);
+      function Read_Header is new Generic_Read (Header_Block);
+      function Read_RIFF is new Generic_Read (RIFF_Block);
+      function Read_Audio is new Generic_Read (Audio_Description_Block);
+      function Read_ID is new Generic_Read (ID);
 
       procedure Read_String
         (H : Header_Block;
@@ -147,7 +148,8 @@ package body Wav_Reader is
       Buffer            : Block with Alignment => 32;
       Index             : Natural := Buffer'First;
       Index_Info        : Natural;
-      Num               : File_Size with Unreferenced;
+      Num               : File_Size;
+      Status            : Status_Code;
 
       -----------------
       -- Read_String --
@@ -157,9 +159,16 @@ package body Wav_Reader is
         (H : Header_Block;
          S : in out String)
       is
-         Num : File_Size with Unreferenced;
+         Num    : File_Size;
+         Status : Status_Code;
       begin
-         Num := Read (F, Buffer'Address, File_Size (H.Size));
+         Num := File_Size (H.Size);
+         Status := Read (F, Buffer'Address, Num);
+
+         if Status /= OK then
+            S := "";
+            return;
+         end if;
 
          if H.Size - 1 > S'Length then
             S := Buffer (1 .. S'Length);
@@ -172,34 +181,61 @@ package body Wav_Reader is
 
    begin
       Info := (others => <>);
-      Read_Header (F, Header);
+      Status := Read_Header (F, Header);
+
+      if Status /= OK then
+         return Internal_Error;
+      end if;
 
       if Header.ID /= "RIFF" then
          return Not_A_WAV_File;
       end if;
 
-      Read_RIFF (F, RIFF_Header);
+      Status := Read_RIFF (F, RIFF_Header);
+
+      if Status /= OK then
+         return Internal_Error;
+      end if;
+
       if RIFF_Header.Format_ID /= "WAVE" then
          return Wrong_WAV_Format;
       end if;
 
       loop
-         Read_Header (F, Header);
+         Status := Read_Header (F, Header);
+
+         if Status /= OK then
+            return Internal_Error;
+         end if;
 
          if Header.ID = "fmt " then
-            Read_Audio (F, Info.Audio_Description);
+            Status := Read_Audio (F, Info.Audio_Description);
+
+            if Status /= OK then
+               return Internal_Error;
+            end if;
+
          elsif Header.ID = "LIST" then
             Index := Natural (Header.Size);
             Index_Info := 4; --  to account for the INFO ID after the header
 
-            Read_ID (F, Header.ID);
+            Status := Read_ID (F, Header.ID);
+
+            if Status /= OK then
+               return Internal_Error;
+            end if;
 
             if Header.ID /= "INFO" then
                return Unexpected_Section;
             end if;
 
             loop
-               Read_Header (F, Header);
+               Status := Read_Header (F, Header);
+
+               if Status /= OK then
+                  return Internal_Error;
+               end if;
+
                Index_Info := Index_Info + 8 + Natural (Header.Size);
 
                if Header.ID = "IART" then
@@ -242,12 +278,18 @@ package body Wav_Reader is
                elsif Header.ID = "IGNR" then
                   Read_String (Header, Info.Metadata.Genre);
                else
-                  Num := Read (F, Buffer'Address, File_Size (Header.Size));
+                  Num := File_Size (Header.Size);
+                  Status := F.Read (Buffer'Address, Num);
+
+                  if Status /= OK then
+                     return Internal_Error;
+                  end if;
                end if;
 
                --  Aligned on 16bit
                if Header.Size mod 2 = 1 then
-                  Num := Read (F, Buffer'Address, 1);
+                  Num := 1;
+                  Status := Read (F, Buffer'Address, Num);
                   Index_Info := Index_Info + 1;
                end if;
 
@@ -271,13 +313,14 @@ package body Wav_Reader is
    ----------
 
    procedure Play
-     (F    : in out Filesystem.FAT.File_Handle;
+     (F    : Filesystem.File_Handle;
       Info : WAV_Info)
    is
-      Idx        : Natural;
-      Len        : Natural;
-      Frq        : Audio_Frequency := Audio_Frequency'First;
-      Total      : Unsigned_32 := 0;
+      Idx    : Natural;
+      Len    : Natural;
+      Frq    : Audio_Frequency := Audio_Frequency'First;
+      Total  : Unsigned_32 := 0;
+      Status : Status_Code with Unreferenced;
 
    begin
       for F in Audio_Frequency'Range loop
@@ -297,15 +340,13 @@ package body Wav_Reader is
       --  blocks.
       Buffer_Scheduler.Next_Index (Idx, Len);
       declare
-         Initial_Length : constant File_Size :=
+         Initial_Length : File_Size :=
                             512 - (Offset (F) mod 512);
-         Cnt            : File_Size;
       begin
-         Cnt := Read (F,
-                      Buffer
-                        (Idx + Len - Integer (Initial_Length / 2) - 1)'Address,
-                      Initial_Length);
-         Total := Total + Unsigned_32 (Cnt / 2);
+         Status := F.Read
+           (Buffer (Idx + Len - Integer (Initial_Length / 2) - 1)'Address,
+            Initial_Length);
+         Total := Total + Unsigned_32 (Initial_Length / 2);
       end;
 
       loop
@@ -315,7 +356,8 @@ package body Wav_Reader is
             Buffer_Scheduler.Next_Index (Idx, Len);
 
             STM32.Board.Turn_On (STM32.Board.Green);
-            Cnt := Read (F, Buffer (Idx)'Address, File_Size (Len) * 2);
+            Cnt := File_Size (Len) * 2;
+            Status := F.Read (Buffer (Idx)'Address, Cnt);
             STM32.Board.Turn_Off (STM32.Board.Green);
             Total := Total + Unsigned_32 (Cnt / 2);
 

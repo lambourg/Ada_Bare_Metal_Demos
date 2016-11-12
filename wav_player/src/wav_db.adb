@@ -21,18 +21,61 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Filesystem.FAT; use Filesystem, Filesystem.FAT;
+with System;
+with Ada.Unchecked_Conversion;
+
+with HAL;            use HAL;
+with STM32.SDRAM;    use STM32.SDRAM;
+
+with Filesystem.VFS; use Filesystem, Filesystem.VFS;
 with Wav_Reader;     use Wav_Reader;
 
 package body Wav_DB is
 
-   Files : array (Track_Index range 1 .. MAX_FILES) of Wav_File;
+   type Path_Type is record
+      S : String (1 .. MAX_PATH_LENGTH);
+      L : Natural := 0;
+   end record;
+
+   function "-" (P : Path_Type) return String;
+   function "-" (P : String) return Path_Type;
+
+   type Wav_File is record
+      Info : Wav_Reader.Metadata_Info;
+      Path : Path_Type;
+   end record;
+
+   type Files_Array is array (Track_Index range 1 .. MAX_FILES) of Wav_File;
+   type Files_Array_Access is access all Files_Array;
+
+   Files : Files_Array_Access := null;
    Last  : Track_Index := 0;
 
    Artists : Track_Array := (others => 0);
    Albums  : Track_Array := (others => 0);
 
    function Trim (S : String) return String;
+
+   ---------
+   -- "-" --
+   ---------
+
+   function "-" (P : Path_Type) return String
+   is (P.S (1 .. P.L));
+
+   ---------
+   -- "-" --
+   ---------
+
+   function "-" (P : String) return Path_Type
+   is
+      Ret : Path_Type;
+   begin
+      Ret.S (1 .. P'Length) := P;
+      Ret.L := P'Length;
+
+      return Ret;
+   end "-";
 
    ----------
    -- Trim --
@@ -54,17 +97,28 @@ package body Wav_DB is
    -- Add_File --
    --------------
 
-   procedure Add_File
-     (FS   : Filesystem.FAT.FAT_Filesystem_Access;
-      Path : Filesystem.FAT.FAT_Path)
+   procedure Add_File (Path : String)
    is
       File  : File_Handle;
       Info  : WAV_Info;
       Idx   : Track_Index;
+      Addr  : System.Address;
+      Status : Status_Code;
+
+      use type HAL.UInt32;
+
+      function To_Access is new Ada.Unchecked_Conversion
+        (System.Address, Files_Array_Access);
 
    begin
-      if Open (FS, Path, Read_Mode, File) /= OK then
-         Last := Last - 1;
+      if Files = null then
+         Addr := STM32.SDRAM.Reserve (Files_Array'Size / 8);
+         Files := To_Access (Addr);
+      end if;
+
+      File := Open (Path, Read_Mode, Status);
+
+      if Status /= OK then
          return;
       end if;
 
@@ -96,7 +150,7 @@ package body Wav_DB is
 
       Files (Idx + 1 .. Last + 1) := Files (Idx .. Last);
       Last := Last + 1;
-      Files (Idx).Path := Path;
+      Files (Idx).Path := -Path;
       Files (Idx).Info := Info.Metadata;
    end Add_File;
 
@@ -118,7 +172,7 @@ package body Wav_DB is
             if Artists (J) = 0 then
                --  Not found, so let's insert a new artist
                if J > Idx then
-                  Artists (Idx + 1 .. J) := Artists (Idx .. J + 1);
+                  Artists (Idx + 1 .. J) := Artists (Idx .. J - 1);
                end if;
                Artists (Idx) := T;
                exit;
@@ -137,7 +191,7 @@ package body Wav_DB is
             if Albums (J) = 0 then
                --  Not found, so let's insert a new album
                if J > Idx then
-                  Albums (Idx + 1 .. J) := Albums (Idx .. J + 1);
+                  Albums (Idx + 1 .. J) := Albums (Idx .. J - 1);
                end if;
                Albums (Idx) := T;
                exit;
@@ -186,17 +240,29 @@ package body Wav_DB is
       return S.Tracks'Length;
    end Num_Tracks;
 
-   -----------
-   -- Track --
-   -----------
+   ----------------
+   -- Track_Path --
+   ----------------
 
-   function Track
+   function Track_Path
      (S   : Selection;
-      Num : Natural) return Wav_File
+      Num : Natural) return String
    is
    begin
-      return Files (S.Tracks (Num));
-   end Track;
+      return -Files (S.Tracks (Num)).Path;
+   end Track_Path;
+
+   ----------------
+   -- Track_Info --
+   ----------------
+
+   function Track_Info
+     (S   : Selection;
+      Num : Natural) return Wav_Reader.Metadata_Info
+   is
+   begin
+      return Files (S.Tracks (Num)).Info;
+   end Track_Info;
 
    -----------------
    -- Num_Artists --
