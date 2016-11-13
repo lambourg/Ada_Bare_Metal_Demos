@@ -189,7 +189,7 @@ package body Filesystem.FAT.Directories is
       Cluster   : Cluster_Type := Parent.Start_Cluster;
       Offset    : FAT_File_Size := FAT_File_Size (Value.Index) * 32;
       Block_Off : Natural;
-      Block     : Unsigned_32;
+      Block     : Block_Offset;
       Ret       : Status_Code;
 
    begin
@@ -202,7 +202,7 @@ package body Filesystem.FAT.Directories is
          Offset := Offset - Parent.FS.Cluster_Size;
       end loop;
 
-      Block     := Unsigned_32 (Offset / Parent.FS.Block_Size);
+      Block     := Block_Offset (Offset / Parent.FS.Block_Size);
       Block_Off := Natural (Offset mod Parent.FS.Block_Size);
 
       Ret := Parent.FS.Ensure_Block
@@ -274,7 +274,7 @@ package body Filesystem.FAT.Directories is
 
       --  Check if we're on the boundary of a new cluster
       if Dir.Current_Block - Dir.FS.Cluster_To_Block (Dir.Current_Cluster)
-        = Unsigned_32 (Dir.FS.Blocks_Per_Cluster)
+        = Dir.FS.Blocks_Per_Cluster
       then
          --  The block we need to read is outside of the current cluster.
          --  Let's move on to the next
@@ -465,7 +465,7 @@ package body Filesystem.FAT.Directories is
    is
       Handle       : access FAT_Directory_Handle;
       Ret          : Status_Code;
-      Block        : Unsigned_32;
+      Block        : Block_Offset;
       Dot          : FAT_Directory_Entry;
       Dot_Dot      : FAT_Directory_Entry;
 
@@ -1109,7 +1109,7 @@ package body Filesystem.FAT.Directories is
             Idx        : Natural := Name.Name'First;
             CRC        : Unsigned_8 := 0;
             C          : Unsigned_8;
-            N_Blocks   : Unsigned_32;
+            N_Blocks   : Block_Offset;
 
          begin
             CRC := 0;
@@ -1174,18 +1174,14 @@ package body Filesystem.FAT.Directories is
 
             --  Retrieve the block number relative to the first block of the
             --  directory content
-            N_Blocks := Unsigned_32
+            N_Blocks := Block_Offset
               (FAT_File_Size (Index) * 32 / Parent.FS.Block_Size);
 
             --  Check if we need to change cluster
-            while N_Blocks >=
-              Unsigned_32 (Parent.FS.Blocks_Per_Cluster)
-            loop
+            while N_Blocks >= Parent.FS.Blocks_Per_Cluster loop
                Parent.Current_Cluster :=
                  Parent.FS.Get_FAT (Parent.Current_Cluster);
-               N_Blocks :=
-                 N_Blocks -
-                   Unsigned_32 (Parent.FS.Blocks_Per_Cluster);
+               N_Blocks := N_Blocks - Parent.FS.Blocks_Per_Cluster;
             end loop;
 
             Parent.Current_Block :=
@@ -1213,9 +1209,7 @@ package body Filesystem.FAT.Directories is
                   exit when Status /= OK;
                   N_Blocks := N_Blocks + 1;
 
-                  if N_Blocks =
-                    Unsigned_32 (Parent.FS.Blocks_Per_Cluster)
-                  then
+                  if N_Blocks = Parent.FS.Blocks_Per_Cluster then
                      N_Blocks := 0;
                      if Parent.FS.Is_Last_Cluster
                        (Parent.FS.Get_FAT (Parent.Current_Cluster))

@@ -43,7 +43,7 @@ package Filesystem.MBR is
    function Get_Type (MBR : Master_Boot_Record;
                       P   : Partition_Number) return Partition_Type;
    function LBA     (MBR : Master_Boot_Record;
-                     P   : Partition_Number) return Interfaces.Unsigned_32;
+                     P   : Partition_Number) return Block_Number;
    function Sectors (MBR : Master_Boot_Record;
                      P   : Partition_Number) return Interfaces.Unsigned_32;
 

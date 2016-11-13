@@ -68,6 +68,13 @@ package Filesystem is
       Backward);
 
    type File_Size is new Interfaces.Unsigned_64;
+   --  Modern fs all support 64-bit file size. Only old or limited ones support
+   --  max 32-bit (FAT in particular). So let's see big and not limit ourselves
+   --  in this API with 32-bit only.
+
+   subtype Block_Number is Interfaces.Unsigned_64;
+   --  To account GUID partitions, and large disks, we need a 64-bit
+   --  representation
 
    type Filesystem is limited interface;
    type Filesystem_Access is access all Filesystem'Class;
@@ -201,9 +208,9 @@ package Filesystem is
 
    function Open
      (Controller : HAL.Block_Drivers.Block_Driver_Ref;
-      LBA        : Interfaces.Unsigned_32;
+      LBA        : Block_Number;
       FS         : not null access Filesystem) return Status_Code is abstract;
-   --  ??? Does it also works outside of an MBR partition?
+   --  Open the FS partition located at the specified LBA.
 
    procedure Close (FS : not null access Filesystem) is abstract;
 

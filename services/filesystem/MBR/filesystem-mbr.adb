@@ -79,8 +79,12 @@ package body Filesystem.MBR is
    ---------
 
    function LBA     (MBR : Master_Boot_Record;
-                     P   : Partition_Number) return Interfaces.Unsigned_32
-   is (MBR.P_Entries (P).LBA);
+                     P   : Partition_Number) return Block_Number
+   is (
+       --  MBR only supports 32-bit LBA. But as we want a generic FS interface
+       --  here, LBA is defined as a 64-bit number, hence the explicit cast
+       --  below.
+       Block_Number (MBR.P_Entries (P).LBA));
 
    -------------
    -- Sectors --

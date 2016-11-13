@@ -518,7 +518,7 @@ package body Filesystem.FAT is
 
    overriding function Open
      (Controller  : HAL.Block_Drivers.Block_Driver_Ref;
-      LBA         : Unsigned_32;
+      LBA         : Block_Number;
       FS          : not null access FAT_Filesystem) return Status_Code
    is
       Status : Status_Code;
@@ -558,7 +558,7 @@ package body Filesystem.FAT is
 
    begin
       FS.Window_Block := 16#FFFF_FFFF#;
-      Status := FS.Ensure_Block (FS.LBA);
+      Status := FS.Ensure_Block (0);
 
       if Status /= OK then
          return;
@@ -574,7 +574,7 @@ package body Filesystem.FAT is
 
       if FS.Version = FAT32 then
          Status :=
-           FS.Ensure_Block (FS.LBA + Unsigned_32 (FS.FSInfo_Block_Number));
+           FS.Ensure_Block (Block_Offset (FS.FSInfo_Block_Number));
 
          if Status /= OK then
             return;
@@ -596,12 +596,12 @@ package body Filesystem.FAT is
                                FS.FAT_Table_Size_In_Blocks *
                                  Unsigned_32 (FS.Number_Of_FATs);
       begin
-         FS.FAT_Addr  := FS.LBA + Unsigned_32 (FS.Reserved_Blocks);
-         FS.Data_Area := FS.FAT_Addr + FAT_Size_In_Block;
+         FS.FAT_Addr  := Block_Offset (FS.Reserved_Blocks);
+         FS.Data_Area := FS.FAT_Addr + Block_Offset (FAT_Size_In_Block);
          FS.Num_Clusters :=
            Cluster_Type
-             ((FS.Total_Number_Of_Blocks + FS.LBA - FS.Data_Area) /
-                    Unsigned_32 (FS.Blocks_Per_Cluster));
+             ((FS.Total_Number_Of_Blocks - Unsigned_32 (FS.Data_Area)) /
+                Unsigned_32 (FS.Blocks_Per_Cluster));
       end;
 
       FS.Root_Entry := Directories.Root_Entry (FS);
@@ -647,15 +647,17 @@ package body Filesystem.FAT is
    ------------------
 
    function Ensure_Block
-     (FS                : in out FAT_Filesystem;
-      Block             : Unsigned_32) return Status_Code
+     (FS    : in out FAT_Filesystem;
+      Block : Block_Offset) return Status_Code
    is
    begin
       if Block = FS.Window_Block then
          return OK;
       end if;
 
-      if not FS.Controller.Read (Block, FS.Window) then
+      if not FS.Controller.Read
+        (Unsigned_64 (FS.LBA) + Unsigned_64 (Block), FS.Window)
+      then
          FS.Window_Block  := 16#FFFF_FFFF#;
 
          return Disk_Error;
@@ -761,9 +763,9 @@ package body Filesystem.FAT is
          if D_Entry.FS.Version = FAT16 then
             Handle.Start_Cluster   := 0;
             Handle.Current_Block   :=
-              Unsigned_32 (D_Entry.FS.Reserved_Blocks) +
-              D_Entry.FS.FAT_Table_Size_In_Blocks *
-                Unsigned_32 (D_Entry.FS.Number_Of_FATs);
+              Block_Offset (D_Entry.FS.Reserved_Blocks) +
+              Block_Offset (D_Entry.FS.FAT_Table_Size_In_Blocks) *
+                Block_Offset (D_Entry.FS.Number_Of_FATs);
          else
             Handle.Start_Cluster := D_Entry.FS.Root_Dir_Cluster;
             Handle.Current_Block :=
@@ -997,7 +999,7 @@ package body Filesystem.FAT is
       Cluster : Cluster_Type) return Cluster_Type
    is
       Idx       : Natural;
-      Block_Num : Unsigned_32;
+      Block_Num : Block_Offset;
 
       subtype B4 is Block (1 .. 4);
       function To_Cluster is new Ada.Unchecked_Conversion
@@ -1010,12 +1012,15 @@ package body Filesystem.FAT is
 
       Block_Num :=
         FS.FAT_Addr +
-          Unsigned_32 (Cluster) * 4 / Unsigned_32 (FS.Block_Size);
+          Block_Offset (Cluster) * 4 / Block_Offset (FS.Block_Size);
 
       if Block_Num /= FS.FAT_Block then
          FS.FAT_Block := Block_Num;
 
-         if not FS.Controller.Read (FS.FAT_Block, FS.FAT_Window) then
+         if not FS.Controller.Read
+           (Unsigned_64 (FS.LBA) + Unsigned_64 (FS.FAT_Block),
+            FS.FAT_Window)
+         then
             FS.FAT_Block := 16#FFFF_FFFF#;
             return INVALID_CLUSTER;
          end if;
@@ -1037,7 +1042,7 @@ package body Filesystem.FAT is
       Value   : Cluster_Type) return Status_Code
    is
       Idx       : Natural;
-      Block_Num : Unsigned_32;
+      Block_Num : Block_Offset;
       Dead      : Boolean with Unreferenced;
 
       subtype B4 is Block (1 .. 4);
@@ -1051,12 +1056,15 @@ package body Filesystem.FAT is
 
       Block_Num :=
         FS.FAT_Addr +
-          Unsigned_32 (Cluster) * 4 / Unsigned_32 (FS.Block_Size);
+          Block_Offset (Cluster) * 4 / Block_Offset (FS.Block_Size);
 
       if Block_Num /= FS.FAT_Block then
          FS.FAT_Block := Block_Num;
 
-         if not FS.Controller.Read (FS.FAT_Block, FS.FAT_Window) then
+         if not FS.Controller.Read
+           (Unsigned_64 (FS.LBA) + Unsigned_64 (FS.FAT_Block),
+            FS.FAT_Window)
+         then
             FS.FAT_Block := 16#FFFF_FFFF#;
             return Disk_Error;
          end if;
@@ -1066,7 +1074,10 @@ package body Filesystem.FAT is
 
       FS.FAT_Window (Idx .. Idx + 3) := From_Cluster (Value);
 
-      if not FS.Controller.Write (FS.FAT_Block, FS.FAT_Window) then
+      if not FS.Controller.Write
+        (Unsigned_64 (FS.LBA) + Unsigned_64 (FS.FAT_Block),
+         FS.FAT_Window)
+      then
          return Disk_Error;
       end if;
 
@@ -1086,8 +1097,8 @@ package body Filesystem.FAT is
         (FAT_FS_Info, FSInfo_Block);
 
       Status        : Status_Code;
-      FAT_Begin_LBA : constant Unsigned_32 :=
-                        FS.LBA + Unsigned_32 (FS.FSInfo_Block_Number);
+      FAT_Begin_LBA : constant Block_Offset :=
+                        Block_Offset (FS.FSInfo_Block_Number);
       Ret           : Status_Code with Unreferenced;
 
    begin
@@ -1214,7 +1225,10 @@ package body Filesystem.FAT is
      (FS : in out FAT_Filesystem) return Status_Code
    is
    begin
-      if FS.Controller.Write (FS.Window_Block, FS.Window) then
+      if FS.Controller.Write
+        (Unsigned_64 (FS.LBA) + Unsigned_64 (FS.Window_Block),
+         FS.Window)
+      then
          return OK;
       else
          return Disk_Error;

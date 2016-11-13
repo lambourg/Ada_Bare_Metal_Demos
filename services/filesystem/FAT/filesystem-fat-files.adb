@@ -25,7 +25,7 @@ with Filesystem.FAT.Directories;
 
 package body Filesystem.FAT.Files is
 
-   function Absolute_Block (File : access FAT_File_Handle) return Unsigned_32
+   function Absolute_Block (File : access FAT_File_Handle) return Block_Number
      with Inline_Always;
 
    function Ensure_Buffer (File : access FAT_File_Handle) return Status_Code
@@ -40,8 +40,10 @@ package body Filesystem.FAT.Files is
    -- Absolute_Block --
    --------------------
 
-   function Absolute_Block (File : access FAT_File_Handle) return Unsigned_32
-   is (File.FS.Cluster_To_Block (File.Current_Cluster) + File.Current_Block);
+   function Absolute_Block (File : access FAT_File_Handle) return Block_Number
+   is (File.FS.LBA +
+         File.FS.Cluster_To_Block (File.Current_Cluster) +
+         File.Current_Block);
 
    -------------------
    -- Ensure_Buffer --
@@ -74,7 +76,7 @@ package body Filesystem.FAT.Files is
      (File : access FAT_File_Handle;
       Inc  : Positive := 1) return Status_Code
    is
-      Todo   : Unsigned_32 := Unsigned_32 (Inc);
+      Todo   : Block_Offset := Block_Offset (Inc);
       Status : Status_Code;
       Next   : Cluster_Type;
    begin
@@ -105,14 +107,9 @@ package body Filesystem.FAT.Files is
 
       while Todo > 0 loop
          --  Move to the next block
-         if File.Current_Block + Todo >=
-           Unsigned_32 (File.FS.Blocks_Per_Cluster)
-         then
-            Todo :=
-              Todo -
-                (Unsigned_32 (File.FS.Blocks_Per_Cluster) -
-                       File.Current_Block);
-            File.Current_Block := Unsigned_32 (File.FS.Blocks_Per_Cluster);
+         if File.Current_Block + Todo >= File.FS.Blocks_Per_Cluster then
+            Todo := Todo + File.Current_Block - File.FS.Blocks_Per_Cluster;
+            File.Current_Block := File.FS.Blocks_Per_Cluster;
 
          else
             File.Current_Block := File.Current_Block + Todo;
@@ -120,7 +117,7 @@ package body Filesystem.FAT.Files is
          end if;
 
          --  Check if we're still in the same cluster
-         if File.Current_Block = Unsigned_32 (File.FS.Blocks_Per_Cluster) then
+         if File.Current_Block = File.FS.Blocks_Per_Cluster then
             --  Move on to the next cluster
             File.Current_Block   := 0;
             Next := File.FS.Get_FAT (File.Current_Cluster);
@@ -225,7 +222,7 @@ package body Filesystem.FAT.Files is
       R_Length    : FAT_File_Size;
       --  The size of the data to read in one operation
 
-      N_Blocks    : Unsigned_32;
+      N_Blocks    : Block_Offset;
 
       Status      : Status_Code;
 
@@ -272,10 +269,9 @@ package body Filesystem.FAT.Files is
                --  transfers to it
 
                --  Read as many blocks as possible withing the current cluster
-               N_Blocks := Unsigned_32'Min
-                 (Unsigned_32 (Data_Length / File.FS.Block_Size),
-                  Unsigned_32 (File.FS.Blocks_Per_Cluster) -
-                      File.Current_Block);
+               N_Blocks := Block_Offset'Min
+                 (Block_Offset (Data_Length / File.FS.Block_Size),
+                  File.FS.Blocks_Per_Cluster - File.Current_Block);
 
                if not File.FS.Controller.Read
                  (Absolute_Block (File),

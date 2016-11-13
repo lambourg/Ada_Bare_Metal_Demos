@@ -141,7 +141,7 @@ package Filesystem.FAT is
 
    overriding function Open
      (Controller  : HAL.Block_Drivers.Block_Driver_Ref;
-      LBA         : Unsigned_32;
+      LBA         : Block_Number;
       FS          : not null access FAT_Filesystem) return Status_Code;
    --  Opens a FAT partition at the given LBA
 
@@ -174,7 +174,7 @@ private
 
    type Cluster_Type is new Interfaces.Unsigned_32;
    subtype Valid_Cluster is Cluster_Type range 2 .. 16#0FFF_FFFF#;
-   type Block_Num is new Interfaces.Unsigned_32;
+   type Block_Offset is new Interfaces.Unsigned_32;
    type FAT_Filesystem_Access is access all FAT_Filesystem;
    type FAT_File_Size is new Interfaces.Unsigned_32;
    --  FAT Filesystem does not support files >= 4GB (e.g. 2**32)
@@ -191,7 +191,7 @@ private
    function Block_Size
      (FS : FAT_Filesystem) return FAT_File_Size;
    function Blocks_Per_Cluster
-     (FS : FAT_Filesystem) return Unsigned_8;
+     (FS : FAT_Filesystem) return Block_Offset;
    function Cluster_Size
      (FS : FAT_Filesystem) return FAT_File_Size;
    function Reserved_Blocks
@@ -313,23 +313,23 @@ private
    type FAT_Filesystem is limited new Filesystem with record
       Initialized     : Boolean := False;
       Disk_Parameters : FAT_Disk_Parameter;
-      LBA             : Unsigned_32;
+      LBA             : Block_Number;
       Controller      : Block_Driver_Ref;
       FSInfo          : FAT_FS_Info;
       FSInfo_Changed  : Boolean := False;
-      Data_Area       : Unsigned_32;
-      FAT_Addr        : Unsigned_32;
+      Data_Area       : Block_Offset; --  address to the data area, rel. to LBA
+      FAT_Addr        : Block_Offset; --  address to the FAT table, rel. to LBA
       Num_Clusters    : Cluster_Type;
-      Window_Block    : Unsigned_32 := 16#FFFF_FFFF#;
+      Window_Block    : Block_Offset := Block_Offset'Last;
       Window          : Block (0 .. 511);
-      FAT_Block       : Unsigned_32 := 16#FFFF_FFFF#;
+      FAT_Block       : Block_Offset := Block_Offset'Last;
       FAT_Window      : Block (0 .. 511);
       Root_Entry      : aliased FAT_Node;
    end record;
 
    function Ensure_Block
      (FS                : in out FAT_Filesystem;
-      Block             : Unsigned_32) return Status_Code;
+      Block             : Block_Offset) return Status_Code;
    --  Ensures the block is visible within the FS window.
    --  Block_Base_OFfset returns the index within the FS window of the block
 
@@ -337,9 +337,12 @@ private
 
    function Cluster_To_Block
      (FS      : FAT_Filesystem;
-      Cluster : Cluster_Type) return Unsigned_32
-   is (FS.Data_Area +
-       Unsigned_32 (Cluster - 2) * Unsigned_32 (FS.Blocks_Per_Cluster));
+      Cluster : Cluster_Type) return Block_Offset
+   is (FS.Data_Area + Block_Offset (Cluster - 2) * FS.Blocks_Per_Cluster);
+
+   function "+" (Base : Block_Number;
+                 Off  : Block_Offset) return Block_Number
+   is (Base + Block_Number (Off));
 
    function Get_FAT
      (FS      : in out FAT_Filesystem;
@@ -406,7 +409,7 @@ private
       Current_Index   : Entry_Index;
       Start_Cluster   : Cluster_Type;
       Current_Cluster : Cluster_Type;
-      Current_Block   : Unsigned_32;
+      Current_Block   : Block_Offset;
       Current_Node    : aliased FAT_Node;
    end record;
 
@@ -465,8 +468,9 @@ private
       Mode            : File_Mode := Read_Mode;
       --  The current cluster from which we read or write
       Current_Cluster : Cluster_Type := 0;
-      --  The current block from which we read or write
-      Current_Block   : Unsigned_32 := 0;
+      --  The current block from which we read or write, offset from
+      --  current_cluster base block
+      Current_Block   : Block_Offset := 0;
       --  Buffer with the content of the current block
       Buffer          : Block (0 .. 511);
       --  How much data in Buffer is meaningful
@@ -600,8 +604,8 @@ private
    is (FAT_File_Size (FS.Disk_Parameters.Block_Size_In_Bytes));
 
    function Blocks_Per_Cluster
-     (FS : FAT_Filesystem) return Unsigned_8
-   is (FS.Disk_Parameters.Blocks_Per_Cluster);
+     (FS : FAT_Filesystem) return Block_Offset
+   is (Block_Offset (FS.Disk_Parameters.Blocks_Per_Cluster));
 
    function Cluster_Size
      (FS : FAT_Filesystem) return FAT_File_Size
