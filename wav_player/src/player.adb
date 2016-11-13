@@ -198,6 +198,7 @@ begin
 
             begin
 
+               Player_Loop :
                loop
                   S := Wav_DB.New_Selection;
 
@@ -293,6 +294,8 @@ begin
                                  Y := Y + 13;
                               else
                                  Play (F, I);
+                                 exit Player_Loop when
+                                   not SDCard_Device.Card_Present;
                               end if;
 
                               Close (F);
@@ -300,7 +303,7 @@ begin
                         end loop;
                      end loop;
                   end loop;
-               end loop;
+               end loop Player_Loop;
             end;
          end if;
       end if;
