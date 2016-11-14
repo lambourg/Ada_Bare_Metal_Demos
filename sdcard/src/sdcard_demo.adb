@@ -74,6 +74,8 @@ is
          Display.Update_Layer (1, True);
          Y := Y + 13;
          Error_State := True;
+
+         return;
       end if;
 
       while not Error_State loop

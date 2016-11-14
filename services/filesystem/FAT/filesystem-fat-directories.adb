@@ -238,7 +238,11 @@ package body Filesystem.FAT.Directories is
       Ret.Is_Root       := True;
       Ret.L_Name        := (Name => (others => ' '),
                             Len  => 0);
-      Ret.Start_Cluster := FS.Root_Dir_Cluster;
+      if FS.Version = FAT16 then
+         Ret.Start_Cluster := 0;
+      else
+         Ret.Start_Cluster := FS.Root_Dir_Cluster;
+      end if;
       Ret.Index         := 0;
 
       return Ret;
@@ -264,31 +268,48 @@ package body Filesystem.FAT.Directories is
          return No_More_Entries;
       end if;
 
-      Block_Off := Natural
-        (FAT_File_Size (Dir.Current_Index * 32) mod Dir.FS.Block_Size);
-
-      --  Check if we're on a block boundare
-      if Unsigned_32 (Block_Off) = 0 and then Dir.Current_Index /= 0 then
-         Dir.Current_Block := Dir.Current_Block + 1;
-      end if;
-
-      --  Check if we're on the boundary of a new cluster
-      if Dir.Current_Block - Dir.FS.Cluster_To_Block (Dir.Current_Cluster)
-        = Dir.FS.Blocks_Per_Cluster
-      then
-         --  The block we need to read is outside of the current cluster.
-         --  Let's move on to the next
-
-         --  Read the FAT table to determine the next cluster
-         Dir.Current_Cluster := Dir.FS.Get_FAT (Dir.Current_Cluster);
-
-         if Dir.Current_Cluster = 1
-           or else Dir.FS.Is_Last_Cluster (Dir.Current_Cluster)
+      if Dir.Start_Cluster = 0 and then Dir.FS.Version = FAT16 then
+         if Dir.Current_Index >
+           Entry_Index (Dir.FS.FAT16_Root_Dir_Num_Entries)
          then
-            return Internal_Error;
+            return No_More_Entries;
+         else
+            Block_Off :=
+              Natural (FAT_File_Size (Dir.Current_Index * 32) mod
+                           Dir.FS.Block_Size);
+            Dir.Current_Block :=
+              Dir.FS.Data_Area +
+                Block_Offset
+                  (FAT_File_Size (Dir.Current_Index * 32) / Dir.FS.Block_Size);
          end if;
 
-         Dir.Current_Block := Dir.FS.Cluster_To_Block (Dir.Current_Cluster);
+      else
+         Block_Off := Natural
+           (FAT_File_Size (Dir.Current_Index * 32) mod Dir.FS.Block_Size);
+
+         --  Check if we're on a block boundare
+         if Unsigned_32 (Block_Off) = 0 and then Dir.Current_Index /= 0 then
+            Dir.Current_Block := Dir.Current_Block + 1;
+         end if;
+
+         --  Check if we're on the boundary of a new cluster
+         if Dir.Current_Block - Dir.FS.Cluster_To_Block (Dir.Current_Cluster)
+           = Dir.FS.Blocks_Per_Cluster
+         then
+            --  The block we need to read is outside of the current cluster.
+            --  Let's move on to the next
+
+            --  Read the FAT table to determine the next cluster
+            Dir.Current_Cluster := Dir.FS.Get_FAT (Dir.Current_Cluster);
+
+            if Dir.Current_Cluster = 1
+              or else Dir.FS.Is_Last_Cluster (Dir.Current_Cluster)
+            then
+               return Internal_Error;
+            end if;
+
+            Dir.Current_Block := Dir.FS.Cluster_To_Block (Dir.Current_Cluster);
+         end if;
       end if;
 
       Ret := Dir.FS.Ensure_Block (Dir.Current_Block);
@@ -435,9 +456,12 @@ package body Filesystem.FAT.Directories is
                S_Name        => D_Entry.Filename,
                S_Name_Ext    => D_Entry.Extension,
                Attributes    => D_Entry.Attributes,
-               Start_Cluster => Cluster_Type
-                 (Unsigned_32 (D_Entry.Cluster_L) or
-                      Shift_Left (Unsigned_32 (D_Entry.Cluster_H), 16)),
+               Start_Cluster => (if Dir.FS.Version = FAT16
+                                 then Cluster_Type (D_Entry.Cluster_L)
+                                 else Cluster_Type
+                                   (Unsigned_32 (D_Entry.Cluster_L) or
+                                      Shift_Left
+                                       (Unsigned_32 (D_Entry.Cluster_H), 16))),
                Size          => D_Entry.Size,
                Index         => Dir.Current_Index - 1,
                Is_Root       => False,

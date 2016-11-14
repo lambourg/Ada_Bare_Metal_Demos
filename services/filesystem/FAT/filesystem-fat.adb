@@ -1002,17 +1002,26 @@ package body Filesystem.FAT is
       Block_Num : Block_Offset;
 
       subtype B4 is Block (1 .. 4);
+      subtype B2 is Block (1 .. 2);
       function To_Cluster is new Ada.Unchecked_Conversion
         (B4, Cluster_Type);
+      function To_U16 is new Ada.Unchecked_Conversion
+        (B2, Unsigned_16);
 
    begin
       if Cluster < 2 or else Cluster >= FS.Num_Clusters then
          return 1;
       end if;
 
-      Block_Num :=
-        FS.FAT_Addr +
-          Block_Offset (Cluster) * 4 / Block_Offset (FS.Block_Size);
+      if FS.Version = FAT32 then
+         Block_Num :=
+           FS.FAT_Addr +
+             Block_Offset (Cluster) * 4 / Block_Offset (FS.Block_Size);
+      else
+         Block_Num :=
+           FS.FAT_Addr +
+             Block_Offset (Cluster) * 2 / Block_Offset (FS.Block_Size);
+      end if;
 
       if Block_Num /= FS.FAT_Block then
          FS.FAT_Block := Block_Num;
@@ -1026,10 +1035,16 @@ package body Filesystem.FAT is
          end if;
       end if;
 
-      Idx :=
-        Natural (FAT_File_Size ((Cluster) * 4) mod FS.Block_Size);
+      if FS.Version = FAT32 then
+         Idx :=
+           Natural (FAT_File_Size ((Cluster) * 4) mod FS.Block_Size);
+         return To_Cluster (FS.FAT_Window (Idx .. Idx + 3)) and 16#0FFF_FFFF#;
+      else
+         Idx :=
+           Natural (FAT_File_Size ((Cluster) * 2) mod FS.Block_Size);
+         return Cluster_Type (To_U16 (FS.FAT_Window (Idx .. Idx + 1)));
+      end if;
 
-      return To_Cluster (FS.FAT_Window (Idx .. Idx + 3)) and 16#0FFF_FFFF#;
    end Get_FAT;
 
    -------------

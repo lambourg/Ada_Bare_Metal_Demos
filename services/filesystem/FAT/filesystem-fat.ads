@@ -206,6 +206,8 @@ private
      (FS : FAT_Filesystem) return Unsigned_32;
    function Root_Dir_Cluster
      (FS : FAT_Filesystem) return Cluster_Type;
+   function FAT16_Root_Dir_Num_Entries
+     (FS : FAT_Filesystem) return Unsigned_16;
    function Flags_For_FAT_Mirroring
      (FS : FAT_Filesystem) return Unsigned_16
      with Pre => Version (FS) = FAT32;
@@ -625,7 +627,9 @@ private
 
    function FAT_Table_Size_In_Blocks
      (FS : FAT_Filesystem) return Unsigned_32
-   is (FS.Disk_Parameters.Table_Size_Fat32);
+   is ((if FS.Version = FAT16
+        then Unsigned_32 (FS.Disk_Parameters.Table_Size_Fat16)
+        else FS.Disk_Parameters.Table_Size_Fat32));
 
    function Number_Of_Hidden_Blocks
      (FS : FAT_Filesystem) return Unsigned_32
@@ -643,14 +647,15 @@ private
 
    function Volume_Label
      (FS : FAT_Filesystem) return String
-   is (if not Is_Volume (FS)
+   is (if FS.Version = FAT16 then "UNKNOWN"
+       elsif not Is_Volume (FS)
        then "UNKNOWN"
        else Trim (FS.Disk_Parameters.Volume_Label_Fat32));
 
    function File_System_Type
      (FS : FAT_Filesystem) return String
-   is (if not Is_Volume (FS)
-       then "FAT32"
+   is (if FS.Version = FAT16 then "FAT16"
+       elsif not Is_Volume (FS) then "FAT32"
        else Trim (FS.Disk_Parameters.FS_Type_Fat32));
 
    function Flags_For_FAT_Mirroring
@@ -664,6 +669,10 @@ private
    function Root_Dir_Cluster
      (FS : FAT_Filesystem) return Cluster_Type
    is (FS.Disk_Parameters.Root_Directory_Cluster);
+
+   function FAT16_Root_Dir_Num_Entries
+     (FS : FAT_Filesystem) return Unsigned_16
+   is (FS.Disk_Parameters.Root_Dir_Entries_Fat16);
 
    function FSInfo_Block_Number
      (FS : FAT_Filesystem) return Unsigned_16
