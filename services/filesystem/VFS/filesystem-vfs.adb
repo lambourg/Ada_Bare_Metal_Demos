@@ -109,7 +109,9 @@ package body Filesystem.VFS is
       Idx : Natural := 0;
    begin
       for P in Mount_Points'Range loop
-         if Name (Mount_Points (P)) = Mount_Point then
+         if not Mount_Points (P).Is_Free
+           and then Name (Mount_Points (P)) = Mount_Point
+         then
             return Already_Exists;
 
          elsif Idx = 0 and then Mount_Points (P).Is_Free then
@@ -297,7 +299,7 @@ package body Filesystem.VFS is
    overriding procedure Close (Dir : access VFS_Directory_Handle)
    is
    begin
-      null;
+      Dir.Is_Free := True;
    end Close;
 
 end Filesystem.VFS;
