@@ -28,6 +28,8 @@ package body Filesystem.VFS is
 
    Mount_Points : Mount_Array;
 
+   Handles : array (1 .. 2) of aliased VFS_Directory_Handle;
+
    function Name (Point : Mount_Record) return Mount_Path;
    procedure Set_Name (Point : in out Mount_Record;
                        Path  : Mount_Path);
@@ -190,6 +192,20 @@ package body Filesystem.VFS is
       Idx : Natural;
       FS  : Filesystem_Access;
    begin
+      if Path = "/" then
+         for J in Handles'Range loop
+            if Handles (J).Is_Free then
+               Handles (J).Is_Free := False;
+               Handles (J).Mount_Id := 0;
+               Status := OK;
+               return Handles (J)'Access;
+            end if;
+         end loop;
+
+         Status := Too_Many_Open_Files;
+         return null;
+      end if;
+
       Split (Path, FS, Idx);
 
       if FS = null then
@@ -226,5 +242,62 @@ package body Filesystem.VFS is
 
       return FS.Open (Path (Idx .. Path'Last), Mode, Status);
    end Open;
+
+   ------------
+   -- Get_FS --
+   ------------
+
+   overriding function Get_FS
+     (Dir : access VFS_Directory_Handle) return Filesystem_Access
+   is
+      pragma Unreferenced (Dir);
+   begin
+      return null;
+   end Get_FS;
+
+   ----------
+   -- Read --
+   ----------
+
+   overriding function Read
+     (Dir    : access VFS_Directory_Handle;
+      Status : out Status_Code) return Node_Access
+   is
+   begin
+      loop
+         if Dir.Mount_Id = Mount_Points'Last then
+            Status := No_More_Entries;
+            return null;
+         end if;
+
+         Dir.Mount_Id := Dir.Mount_Id + 1;
+
+         if not Mount_Points (Dir.Mount_Id).Is_Free then
+            return Mount_Points (Dir.Mount_Id).FS.Root_Node
+              (Name (Mount_Points (Dir.Mount_Id)),
+               Status);
+         end if;
+      end loop;
+   end Read;
+
+   -----------
+   -- Reset --
+   -----------
+
+   overriding procedure Reset (Dir : access VFS_Directory_Handle)
+   is
+   begin
+      Dir.Mount_Id := 0;
+   end Reset;
+
+   -----------
+   -- Close --
+   -----------
+
+   overriding procedure Close (Dir : access VFS_Directory_Handle)
+   is
+   begin
+      null;
+   end Close;
 
 end Filesystem.VFS;

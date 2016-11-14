@@ -209,7 +209,7 @@ begin
             Y := Y + 13;
          end if;
 
-         Display_Current_Dir ("/sdcard/");
+         Display_Current_Dir ("/");
          Status := Unmount ("sdcard");
 
          Display.Update_Layer (1);

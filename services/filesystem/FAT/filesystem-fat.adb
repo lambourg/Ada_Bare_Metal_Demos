@@ -690,12 +690,17 @@ package body Filesystem.FAT is
    -- Root_Entry --
    ----------------
 
-   function Root_Entry
-     (FS : access FAT_Filesystem) return access FAT_Node'Class
+   overriding function Root_Node
+     (FS     : access FAT_Filesystem;
+      As     : String;
+      Status : out Status_Code)
+      return Node_Access
    is
    begin
+      FS.Root_Entry.L_Name := -As;
+      Status := OK;
       return FS.Root_Entry'Unchecked_Access;
-   end Root_Entry;
+   end Root_Node;
 
    ----------
    -- Open --

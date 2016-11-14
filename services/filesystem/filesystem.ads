@@ -109,6 +109,13 @@ package Filesystem is
       is abstract;
    --  Return the filesystem the handle belongs to.
 
+   function Root_Node
+     (FS     : access Filesystem;
+      As     : String;
+      Status : out Status_Code)
+      return Node_Access is abstract;
+   --  Open a new Directory Handle at the given Filesystem Path
+
    function Read
      (Dir    : access Directory_Handle_Object;
       Status : out Status_Code) return Node_Access is abstract;

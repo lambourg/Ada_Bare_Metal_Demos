@@ -102,8 +102,11 @@ package Filesystem.FAT is
      (D_Entry : FAT_Node;
       Status  : out Status_Code) return Directory_Handle;
 
-   function Root_Entry
-     (FS : access FAT_Filesystem) return access FAT_Node'Class;
+   overriding function Root_Node
+     (FS     : access FAT_Filesystem;
+      As     : String;
+      Status : out Status_Code)
+      return Node_Access;
    function Long_Name (E : FAT_Node) return FAT_Name;
    function Short_Name (E : FAT_Node) return FAT_Name;
    overriding function Basename (E : FAT_Node) return String;

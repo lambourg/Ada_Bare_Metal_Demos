@@ -27,6 +27,7 @@ with HAL.Block_Drivers;
 package Filesystem.MBR is
 
    type Master_Boot_Record is private;
+   type Extended_Boot_Record is private;
 
    type Partition_Number is range 1 .. 4;
 
@@ -46,6 +47,26 @@ package Filesystem.MBR is
                      P   : Partition_Number) return Block_Number;
    function Sectors (MBR : Master_Boot_Record;
                      P   : Partition_Number) return Interfaces.Unsigned_32;
+
+   function Is_Extended
+     (MBR : Master_Boot_Record;
+      P   : Partition_Number) return Boolean;
+
+   function Read_Extended
+     (Controller  : HAL.Block_Drivers.Block_Driver_Ref;
+      MBR         : Master_Boot_Record;
+      P           : Partition_Number;
+      EBR         : out Extended_Boot_Record) return Status_Code;
+
+   function Get_Type (EBR : Extended_Boot_Record) return Partition_Type;
+   function LBA     (EBR : Extended_Boot_Record) return Block_Number;
+   function Sectors (EBR : Extended_Boot_Record) return Interfaces.Unsigned_32;
+
+   function Has_Next (EBR : Extended_Boot_Record) return Boolean;
+
+   function Read_Next
+     (Controller : HAL.Block_Drivers.Block_Driver_Ref;
+      EBR        : in out Extended_Boot_Record) return Status_Code;
 
 private
 
@@ -79,6 +100,14 @@ private
       Num_Sectors  at 12 range 0 .. 31;
    end record;
 
+   Zeroed_Entry : constant Partition_Entry :=
+                    (Status       => 0,
+                     First_Sector => (0, 0, 0),
+                     P_Type       => 0,
+                     Last_Sector  => (0, 0, 0),
+                     LBA          => 0,
+                     Num_Sectors  => 0);
+
    type Partition_Array is array (Partition_Number) of Partition_Entry;
 
    type Master_Boot_Record is record
@@ -90,5 +119,12 @@ private
       P_Entries at 16#1BE# range 0 .. 4 * 16 * 8 - 1;
       Signature at 16#1FE# range 0 .. 15;
    end record;
+
+   type Extended_Boot_Record is new Master_Boot_Record;
+
+   function Is_Extended
+     (MBR : Master_Boot_Record;
+      P   : Partition_Number) return Boolean
+   is (Get_Type (MBR, P) = 16#0F#);
 
 end Filesystem.MBR;

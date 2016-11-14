@@ -50,13 +50,41 @@ package body Filesystem.MBR is
       return OK;
    end Read;
 
+   -------------------
+   -- Read_Extended --
+   -------------------
+
+   function Read_Extended
+     (Controller  : HAL.Block_Drivers.Block_Driver_Ref;
+      MBR         : Master_Boot_Record;
+      P           : Partition_Number;
+      EBR         : out Extended_Boot_Record) return Status_Code
+   is
+      BA : constant Block_Number := LBA (MBR, P);
+      Tmp  : aliased Extended_Boot_Record;
+      Data : aliased HAL.Byte_Array (1 .. 512) with Address => Tmp'Address;
+   begin
+      --  Let's read the MBR: located in the first block
+      if not Controller.Read (BA, Data) then
+         return Disk_Error;
+      end if;
+
+      EBR := Tmp;
+
+      if EBR.Signature /= 16#AA55# then
+         return No_MBR_Found;
+      end if;
+
+      return OK;
+   end Read_Extended;
+
    ------------
    -- Active --
    ------------
 
    function Active  (MBR : Master_Boot_Record;
                      P   : Partition_Number) return Boolean
-   is ((MBR.P_Entries (P).Status and 16#80#) = 16#80#);
+   is (MBR.P_Entries (P).Status = 16#80#);
 
    -----------
    -- Valid --
@@ -64,7 +92,7 @@ package body Filesystem.MBR is
 
    function Valid   (MBR : Master_Boot_Record;
                      P   : Partition_Number) return Boolean
-   is (MBR.P_Entries (P).Num_Sectors > 0);
+   is ((MBR.P_Entries (P).Status and not 16#80#) = 0);
 
    --------------
    -- Get_Type --
@@ -93,5 +121,71 @@ package body Filesystem.MBR is
    function Sectors (MBR : Master_Boot_Record;
                      P   : Partition_Number) return Interfaces.Unsigned_32
    is (MBR.P_Entries (P).Num_Sectors);
+
+   --------------
+   -- Get_Type --
+   --------------
+
+   function Get_Type (EBR : Extended_Boot_Record) return Partition_Type
+   is
+   begin
+      return EBR.P_Entries (1).P_Type;
+   end Get_Type;
+
+   ---------
+   -- LBA --
+   ---------
+
+   function LBA (EBR : Extended_Boot_Record) return Block_Number
+   is
+   begin
+      return Block_Number (EBR.P_Entries (1).LBA);
+   end LBA;
+
+   -------------
+   -- Sectors --
+   -------------
+
+   function Sectors (EBR : Extended_Boot_Record) return Interfaces.Unsigned_32
+   is
+   begin
+      return EBR.P_Entries (1).Num_Sectors;
+   end Sectors;
+
+   --------------
+   -- Has_Next --
+   --------------
+
+   function Has_Next (EBR : Extended_Boot_Record) return Boolean
+   is
+   begin
+      return EBR.P_Entries (2) /= Zeroed_Entry;
+   end Has_Next;
+
+   ---------------
+   -- Read_Next --
+   ---------------
+
+   function Read_Next
+     (Controller : HAL.Block_Drivers.Block_Driver_Ref;
+      EBR        : in out Extended_Boot_Record) return Status_Code
+   is
+      BA   : constant Block_Number := Block_Number (EBR.P_Entries (2).LBA);
+      Tmp  : aliased Extended_Boot_Record;
+      Data : aliased HAL.Byte_Array (1 .. 512) with Address => Tmp'Address;
+   begin
+      --  Let's read the MBR: located in the first block
+      if not Controller.Read (BA, Data) then
+         return Disk_Error;
+      end if;
+
+      EBR := Tmp;
+
+      if EBR.Signature /= 16#AA55# then
+         return No_MBR_Found;
+      end if;
+
+      return OK;
+   end Read_Next;
 
 end Filesystem.MBR;
