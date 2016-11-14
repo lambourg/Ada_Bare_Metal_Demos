@@ -595,9 +595,27 @@ package body Filesystem.FAT is
          FAT_Size_In_Block : constant Unsigned_32 :=
                                FS.FAT_Table_Size_In_Blocks *
                                  Unsigned_32 (FS.Number_Of_FATs);
+         Root_Dir_Size     : Block_Offset;
       begin
          FS.FAT_Addr  := Block_Offset (FS.Reserved_Blocks);
          FS.Data_Area := FS.FAT_Addr + Block_Offset (FAT_Size_In_Block);
+
+         if FS.Version = FAT16 then
+            --  Add space for the root directory
+            FS.Root_Dir_Area := FS.Data_Area;
+            Root_Dir_Size :=
+              (Block_Offset (FS.FAT16_Root_Dir_Num_Entries) * 32 +
+                   Block_Offset (FS.Block_Size) - 1) /
+                Block_Offset (FS.Block_Size);
+            --  Align on clusters
+            Root_Dir_Size :=
+              ((Root_Dir_Size + FS.Blocks_Per_Cluster - 1) /
+                   FS.Blocks_Per_Cluster) *
+                  FS.Blocks_Per_Cluster;
+
+            FS.Data_Area := FS.Data_Area + Root_Dir_Size;
+         end if;
+
          FS.Num_Clusters :=
            Cluster_Type
              ((FS.Total_Number_Of_Blocks - Unsigned_32 (FS.Data_Area)) /
@@ -762,10 +780,7 @@ package body Filesystem.FAT is
       if D_Entry.Is_Root then
          if D_Entry.FS.Version = FAT16 then
             Handle.Start_Cluster   := 0;
-            Handle.Current_Block   :=
-              Block_Offset (D_Entry.FS.Reserved_Blocks) +
-              Block_Offset (D_Entry.FS.FAT_Table_Size_In_Blocks) *
-                Block_Offset (D_Entry.FS.Number_Of_FATs);
+            Handle.Current_Block   := D_Entry.FS.Root_Dir_Area;
          else
             Handle.Start_Cluster := D_Entry.FS.Root_Dir_Cluster;
             Handle.Current_Block :=

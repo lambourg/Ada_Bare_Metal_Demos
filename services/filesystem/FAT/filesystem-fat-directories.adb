@@ -278,7 +278,7 @@ package body Filesystem.FAT.Directories is
               Natural (FAT_File_Size (Dir.Current_Index * 32) mod
                            Dir.FS.Block_Size);
             Dir.Current_Block :=
-              Dir.FS.Data_Area +
+              Dir.FS.Root_Dir_Area +
                 Block_Offset
                   (FAT_File_Size (Dir.Current_Index * 32) / Dir.FS.Block_Size);
          end if;
@@ -458,10 +458,9 @@ package body Filesystem.FAT.Directories is
                Attributes    => D_Entry.Attributes,
                Start_Cluster => (if Dir.FS.Version = FAT16
                                  then Cluster_Type (D_Entry.Cluster_L)
-                                 else Cluster_Type
-                                   (Unsigned_32 (D_Entry.Cluster_L) or
-                                      Shift_Left
-                                       (Unsigned_32 (D_Entry.Cluster_H), 16))),
+                                 else Cluster_Type (D_Entry.Cluster_L) or
+                                   Shift_Left
+                                       (Cluster_Type (D_Entry.Cluster_H), 16)),
                Size          => D_Entry.Size,
                Index         => Dir.Current_Index - 1,
                Is_Root       => False,
