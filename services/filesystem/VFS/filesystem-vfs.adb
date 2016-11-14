@@ -146,7 +146,7 @@ package body Filesystem.VFS is
       end if;
 
       for P in Partition_Number'Range loop
-         if Valid (MBR, P) and then Get_Type (MBR, P) = 11 then
+         if Valid (MBR, P) and then Get_Type (MBR, P) in 11 .. 12 then
             Status := OK;
             FAT_FS := new FAT_Filesystem;
             Status := Open (Controller => Device,
