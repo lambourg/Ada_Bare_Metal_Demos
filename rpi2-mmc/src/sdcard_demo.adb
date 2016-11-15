@@ -285,7 +285,8 @@ is
       use Ada.Real_Time;
       Start, Stop : Time;
       Elaps : Time_Span;
-      Data : HAL.Block_Drivers.Block (0 .. 511);
+      Data : HAL.Block_Drivers.Block (0 .. 8 * 512 - 1);
+      Blk : Unsigned_64;
       Ms : Natural;
    begin
       if not Setup then
@@ -293,11 +294,13 @@ is
       end if;
 
       Start := Clock;
-      for Num in Unsigned_64 range 0 .. 2048 loop
-         if not Read (EMMC_Driver, Num, Data) then
+      Blk := 0;
+      while Blk < 2048 loop
+         if not Read (EMMC_Driver, Blk, Data) then
             Put_Line ("Read failure");
             exit;
          end if;
+         Blk := Blk + Data'Length / 512;
       end loop;
       Stop := Clock;
       Elaps := Stop - Start;

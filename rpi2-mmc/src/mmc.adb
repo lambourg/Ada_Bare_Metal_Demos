@@ -120,8 +120,12 @@ package body Mmc is
             null;
          when Tfr_Read =>
             Cmd_Val := Cmd_Val or 16#20_0010#;
+         when Tfr_Read_Multi =>
+            Cmd_Val := Cmd_Val or 16#20_0036#;
          when Tfr_Write =>
             Cmd_Val := Cmd_Val or 16#20_0000#;
+         when Tfr_Write_Multi =>
+            Cmd_Val := Cmd_Val or 16#20_0026#;
       end case;
 
       EMMC.Arg1 := Arg;
@@ -178,18 +182,22 @@ package body Mmc is
       W3 := Shift_Left (EMMC.RSP0, 8);
    end Read_Rsp136;
 
-   procedure Read_Cmd
+   procedure Read_Multi_Cmd
      (This : in out SDCard_Driver;
       Cmd : Cmd_Desc_Type;
       Arg : Unsigned_32;
       Buf : System.Address;
       Len : Unsigned_32;
+      Nbr_Blk : Unsigned_32;
       Status : out SD_Error)
    is
       use EMMC_Bits;
       Irpts : Unsigned_32;
+      use System.Storage_Elements;
+      Addr : Address := Buf;
+      L : Unsigned_32 := Len;
    begin
-      EMMC.BLKSIZECNT := 16#1_0000# + Len;
+      EMMC.BLKSIZECNT := Nbr_Blk * 2**16 + Len;
 
       Send_Cmd (This, Cmd, Arg, Status);
       if Status /= Ok then
@@ -197,23 +205,21 @@ package body Mmc is
       end if;
 
       --  Wait for data complete interrupt
-      loop
-         Irpts := EMMC.Interrupt;
-         exit when (Irpts and (READ_RDY or ERR)) /= 0;
-      end loop;
-      if (Irpts and ERR) /= 0 then
-         Put_Line ("EMMC_Read: read error");
-         Status := Error;
-         return;
-      end if;
-      EMMC.Interrupt := 16#ffff_0000# or READ_RDY;
+      Addr := Buf;
+      for I in 1 .. Nbr_Blk loop
+         loop
+            Irpts := EMMC.Interrupt;
+            exit when (Irpts and (READ_RDY or ERR)) /= 0;
+         end loop;
+         if (Irpts and ERR) /= 0 then
+            Put_Line ("EMMC_Read: read error");
+            Status := Error;
+            return;
+         end if;
+         EMMC.Interrupt := 16#ffff_0000# or READ_RDY;
 
-      pragma Assert (Len mod 4 = 0);
-      declare
-         use System.Storage_Elements;
-         Addr : Address := Buf;
-         L : Unsigned_32 := Len;
-      begin
+         pragma Assert (Len mod 4 = 0);
+         L := Len;
          while L > 0 loop
             declare
                V : Unsigned_32 with Address => Addr, Import, Volatile;
@@ -223,8 +229,7 @@ package body Mmc is
             Addr := Addr + 4;
             L := L - 4;
          end loop;
-      end;
-
+      end loop;
       loop
          Irpts := EMMC.Interrupt;
          exit when (Irpts and (DATA_DONE or ERR)) /= 0;
@@ -236,6 +241,17 @@ package body Mmc is
       end if;
 
       EMMC.Interrupt := 16#ffff_0000# or DATA_DONE;
+   end Read_Multi_Cmd;
+
+   procedure Read_Cmd
+     (This : in out SDCard_Driver;
+      Cmd : Cmd_Desc_Type;
+      Arg : Unsigned_32;
+      Buf : System.Address;
+      Len : Unsigned_32;
+      Status : out SD_Error) is
+   begin
+      Read_Multi_Cmd (This, Cmd, Arg, Buf, Len, 1, Status);
    end Read_Cmd;
 
    function Read
@@ -244,10 +260,21 @@ package body Mmc is
       Data         : out Block) return Boolean
    is
       Status : SD_Error;
+      Blk_Size : constant Unsigned_32 := 512;
+      Len : constant Unsigned_32 := Data'Length;
+      Nbr_Blks : constant Unsigned_32 := Len / Blk_Size;
    begin
-      pragma Assert (Data'Length = 512);
-      Read_Cmd (Controller, Cmd_Desc (Read_Single_Block),
-                Unsigned_32 (Block_Number), Data'Address, Data'Length, Status);
+      pragma Assert (Len = Nbr_Blks * Blk_Size);
+
+      if Nbr_Blks = 1 then
+         Read_Cmd (Controller, Cmd_Desc (Read_Single_Block),
+                   Unsigned_32 (Block_Number),
+                   Data'Address, Data'Length, Status);
+      else
+         Read_Multi_Cmd (Controller, Cmd_Desc (Read_Multi_Block),
+                         Unsigned_32 (Block_Number),
+                         Data'Address, Blk_Size, Nbr_Blks, Status);
+      end if;
       return Status = OK;
    end Read;
 
