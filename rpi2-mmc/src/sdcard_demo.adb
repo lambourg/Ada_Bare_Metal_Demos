@@ -37,6 +37,8 @@ with HAL.Block_Drivers;
 with HAL.SDCard;                 use HAL.SDCard;
 with MMC;                        use MMC;
 
+with SDCard_Buf;
+
 with Hex_Images; use Hex_Images;
 
 procedure SDCard_Demo
@@ -285,9 +287,8 @@ is
       use Ada.Real_Time;
       Start, Stop : Time;
       Elaps : Time_Span;
-      Data : HAL.Block_Drivers.Block (0 .. 8 * 512 - 1);
       Blk : Unsigned_64;
-      Ms : Natural;
+      Us : Natural;
    begin
       if not Setup then
          return;
@@ -296,18 +297,21 @@ is
       Start := Clock;
       Blk := 0;
       while Blk < 2048 loop
-         if not Read (EMMC_Driver, Blk, Data) then
+         if not Read (EMMC_Driver, Blk, SDCard_Buf.Data) then
             Put_Line ("Read failure");
             exit;
          end if;
-         Blk := Blk + Data'Length / 512;
+         Blk := Blk + SDCard_Buf.Data'Length / 512;
       end loop;
       Stop := Clock;
       Elaps := Stop - Start;
       Put ("Time to read 1MB:");
-      Ms := Elaps / Milliseconds (1);
-      Put (Natural'Image (Ms));
-      Put_Line (" ms");
+      Us := Elaps / Microseconds (1);
+      Put (Natural'Image (Us));
+      Put ("us");
+      Put (" ie");
+      Put (Natural'Image (1_000_000 / Us));
+      Put_Line ("MB/s");
    end Do_Speed;
 
    C : Character;
