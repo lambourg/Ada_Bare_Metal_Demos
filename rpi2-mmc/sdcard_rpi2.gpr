@@ -1,5 +1,8 @@
 project SDCard_RPI2 is
 
+   type Boards is ("RPI2", "ZYNQ");
+   Board : Boards := external ("BOARD", "RPI2");
+
    for Object_Dir use "obj";
 
    for Main use ("sdcard_demo.adb");
@@ -10,5 +13,12 @@ project SDCard_RPI2 is
                         "../services/filesystem/mbr",
 			"../services/filesystem/VFS",
                         "../services/filesystem/FAT");
-
+   package Naming is
+     case Board is
+       when "RPI2" =>
+         for Body ("mmc") use "mmc_rpi2.adb";
+       when "ZYNQ" =>
+         for Body ("mmc") use "mmc_zynq.adb";
+     end case;
+   end Naming;
 end SDCard_RPI2;

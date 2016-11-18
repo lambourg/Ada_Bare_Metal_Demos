@@ -43,6 +43,10 @@ with Ada.Text_IO; use Ada.Text_IO;
 
 package body Mmc is
 
+   Flag_Trace : constant Boolean := False;
+
+   Card_Type : Supported_SD_Memory_Cards;
+
    UC_Address : constant System.Address := System'To_Address (16#3ae00000#);
 
    function To_Unsigned_32 is new Ada.Unchecked_Conversion
@@ -82,6 +86,11 @@ package body Mmc is
       Irpts : Unsigned_32;
       Cmd_Val : Unsigned_32;
    begin
+      if Flag_Trace then
+         Put ("SD cmd:");
+         Put (SD_Command'Image (Cmd.Cmd));
+      end if;
+
       --  Wait until cmd line not used by previous command.
       while (EMMC.Status and CMD_INHIBIT) /= 0 loop
          null;
@@ -199,6 +208,16 @@ package body Mmc is
    begin
       EMMC.BLKSIZECNT := Nbr_Blk * 2**16 + Len;
 
+      if Flag_Trace then
+         Put ("read_multi: nbr=");
+         Put (Unsigned_32'Image (Nbr_Blk));
+         Put (", len=");
+         Put (Unsigned_32'Image (Len));
+         Put (", arg=");
+         Put (Unsigned_32'Image (Arg));
+         New_Line;
+      end if;
+
       Send_Cmd (This, Cmd, Arg, Status);
       if Status /= Ok then
          return;
@@ -267,9 +286,9 @@ package body Mmc is
       pragma Assert (Len = Nbr_Blks * Blk_Size);
 
       if Nbr_Blks = 1 then
-         Read_Cmd (Controller, Cmd_Desc (Read_Single_Block),
-                   Unsigned_32 (Block_Number),
-                   Data'Address, Data'Length, Status);
+         Read_Multi_Cmd (Controller, Cmd_Desc (Read_Single_Block),
+                         Unsigned_32 (Block_Number),
+                         Data'Address, Blk_Size, 1, Status);
       else
          Read_Multi_Cmd (Controller, Cmd_Desc (Read_Multi_Block),
                          Unsigned_32 (Block_Number),
@@ -285,34 +304,6 @@ package body Mmc is
    begin
       return False;
    end Write;
-
-   procedure Reset
-     (This : in out SDCard_Driver;
-      Status : out SD_Error)
-   is
-      use EMMC_Bits;
-   begin
-      Put_Line ("reset");
-      --  Reset controller
-      begin
-         EMMC.Control0 := 0;
-         EMMC.Control1 := 16#070ffa20#;
-         EMMC.Control2 := 0;
-
-         --  Wait until end of reset
-         while (EMMC.Control1 and (SRST_DATA or SRST_CMD or SRST_HC)) /= 0 loop
-            null;
-         end loop;
-      end;
-
-      Set_Clock (This, 400_000);
-
-      --  Enable int
-      EMMC.IRPT_Mask := 16#ffff_ffff#;
-      EMMC.IRPT_En := 16#ffff_ffff#;
-
-      Status := OK;
-   end Reset;
 
    --  Get the driving clock of the controller.
    function Get_Mmc_Clock return Natural
@@ -345,9 +336,11 @@ package body Mmc is
       end if;
    end Get_Mmc_Clock;
 
+   --  If WAIT is true, wait until last command is completed
    procedure Set_Clock
      (This : in out SDCard_Driver;
-      Freq : Natural)
+      Freq : Natural;
+      Wait : Boolean)
    is
       use EMMC_Bits;
       Mmc_Clk : constant Natural := Get_Mmc_Clock;
@@ -368,9 +361,11 @@ package body Mmc is
       Div := Natural'Min (Div, 2046) / 2;
 
       --  Wait until data and command lines are quiet
-      while (EMMC.Status and (DAT_INHIBIT or CMD_INHIBIT)) /= 0 loop
-         null;
-      end loop;
+      if Wait then
+         while (EMMC.Status and (DAT_INHIBIT or CMD_INHIBIT)) /= 0 loop
+            null;
+         end loop;
+      end if;
 
       Ctrl := EMMC.Control1;
 
@@ -399,6 +394,13 @@ package body Mmc is
       delay until Clock + Milliseconds (2);
    end Set_Clock;
 
+   procedure Set_Clock
+     (This : in out SDCard_Driver;
+      Freq : Natural) is
+   begin
+      Set_Clock (This, Freq, True);
+   end Set_Clock;
+
    procedure Set_Bus_Size
      (This : in out SDCard_Driver;
       Mode : Wide_Bus_Mode)
@@ -419,4 +421,40 @@ package body Mmc is
 
       EMMC.Control0 := V;
    end Set_Bus_Size;
+
+   procedure Reset
+     (This : in out SDCard_Driver;
+      Status : out SD_Error)
+   is
+      use EMMC_Bits;
+   begin
+      Put_Line ("reset");
+      --  Reset controller
+      EMMC.Control0 := 0;
+      EMMC.Control1 := 16#070ffa20#;
+      EMMC.Control2 := 0;
+
+      --  Wait until end of reset
+      while (EMMC.Control1 and (SRST_DATA or SRST_CMD or SRST_HC)) /= 0 loop
+         null;
+      end loop;
+
+      Set_Clock (This, 400_000, False);
+
+      --  Enable int
+      EMMC.IRPT_Mask := 16#ffff_ffff#;
+      EMMC.IRPT_En := 16#ffff_ffff#;
+
+      Status := OK;
+   end Reset;
+
+   procedure Initialize (Driver : in out SDCard_Driver;
+                         Info   : out Card_Information;
+                         Status : out SD_Error) is
+   begin
+      Card_Identification_Process (Driver, Info, Status);
+      if Status = OK then
+         Card_Type := Info.Card_Type;
+      end if;
+   end Initialize;
 end Mmc;
