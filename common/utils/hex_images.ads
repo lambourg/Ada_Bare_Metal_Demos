@@ -12,4 +12,10 @@ package Hex_Images is
 
    function Hex8 (V : Uint32) return Uint32_Image_Pkg.Fixed_String
      renames Uint32_Image_Pkg.Hex;
+
+
+   package Uint64_Image_Pkg is new Images_Gen (16, Uint64);
+
+   function Hex16 (V : Uint64) return Uint64_Image_Pkg.Fixed_String
+     renames Uint64_Image_Pkg.Hex;
 end Hex_Images;
