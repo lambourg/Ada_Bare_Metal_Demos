@@ -131,7 +131,12 @@ is
       Put ("MID: ");
       Put (Hex2 (CID.Manufacturer_ID));
       Put (", OID: ");
-      Put (CID.OEM_Application_ID);
+      if SD_Card_Info.Card_Type = Multimedia_Card then
+         Put (Hex2 (Character'Pos (CID.OEM_Application_ID (1))));
+         Put (Hex2 (Character'Pos (CID.OEM_Application_ID (2))));
+      else
+         Put (CID.OEM_Application_ID);
+      end if;
       Put (", Name: ");
       Put (CID.Product_Name);
       Put (", Rev: ");
@@ -277,13 +282,15 @@ is
 
       Disp_CID (SD_Card_Info.SD_CID);
       New_Line;
-      Read_SCR (EMMC_Driver, SD_Card_Info, SCR, SD_Status);
-      if SD_Status /= OK then
-         Put_Line ("Cannot read SCR");
-      else
-         Disp_SCR (SCR);
+      if SD_Card_Info.Card_Type /= Multimedia_Card then
+         Read_SCR (EMMC_Driver, SD_Card_Info, SCR, SD_Status);
+         if SD_Status /= OK then
+            Put_Line ("Cannot read SCR");
+         else
+            Disp_SCR (SCR);
+         end if;
+         New_Line;
       end if;
-      New_Line;
       Disp_CSD (SD_Card_Info.SD_CSD);
       New_Line;
       Disp_Info;

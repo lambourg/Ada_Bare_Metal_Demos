@@ -268,8 +268,10 @@ package body Mmc is
          Put_Line (Hex8 (Irpts));
          if (Irpts and CTO_Err) /= 0 then
             Reset_Cmd;
+            Status := Command_Timeout_Error;
+         else
+            Status := Error;
          end if;
-         Status := Error;
          return;
       end if;
 
@@ -409,11 +411,13 @@ package body Mmc is
    begin
       pragma Assert (Len = Nbr_Blks * Block_Size);
 
-      if Card_Type = STD_Capacity_SD_Card_V1_1 then
-         Blk := Unsigned_32 (Block_Number * Block_Size);
-      else
-         Blk := Unsigned_32 (Block_Number);
-      end if;
+      case Card_Type is
+         when Multimedia_Card
+           | STD_Capacity_SD_Card_V1_1 =>
+            Blk := Unsigned_32 (Block_Number * Block_Size);
+         when others =>
+            Blk := Unsigned_32 (Block_Number);
+      end case;
 
       if Nbr_Blks = 1 then
          Read_Multi_Cmd (Controller, Cmd_Desc (Read_Single_Block), Blk,
