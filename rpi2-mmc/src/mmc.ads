@@ -72,6 +72,10 @@ package MMC is
      (This : in out SDCard_Driver;
       W0, W1, W2, W3 : out Unsigned_32);
 
+   procedure Initialize (Driver : in out SDCard_Driver;
+                         Info   : out Card_Information;
+                         Status : out SD_Error);
+
    overriding function Read
      (Controller   : in out SDCard_Driver;
       Block_Number : Unsigned_64;

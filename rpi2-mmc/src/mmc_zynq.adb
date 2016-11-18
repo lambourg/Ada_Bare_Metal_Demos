@@ -172,6 +172,8 @@ package body Mmc is
    SDIO : SDIO_Registers_Type
      with Import, Volatile, Address => System'To_Address (SDIO_Base);
 
+   Card_Type : Supported_SD_Memory_Cards;
+
    procedure Reset_Cmd
    is
       use SDIO_Bits;
@@ -343,12 +345,17 @@ package body Mmc is
       --  Wait for data complete interrupt
       Addr := Buf;
       for I in 1 .. Nbr_Blk loop
+         if False then
+            Put ("read blk #");
+            Put_Line (Hex8 (Arg + I - 1));
+         end if;
          loop
             Irpts := SDIO.Interrupt;
             exit when (Irpts and (READ_RDY or ERR)) /= 0;
          end loop;
          if (Irpts and ERR) /= 0 then
-            Put_Line ("EMMC_Read: read error");
+            Put ("EMMC_Read: read error, int=");
+            Put_Line (Hex8 (Irpts));
             Status := Error;
             return;
          end if;
@@ -396,20 +403,24 @@ package body Mmc is
       Data         : out Block) return Boolean
    is
       Status : SD_Error;
-      Blk_Size : constant Unsigned_32 := 512;
+      Blk : Unsigned_32;
       Len : constant Unsigned_32 := Data'Length;
-      Nbr_Blks : constant Unsigned_32 := Len / Blk_Size;
+      Nbr_Blks : constant Unsigned_32 := Len / Block_Size;
    begin
-      pragma Assert (Len = Nbr_Blks * Blk_Size);
+      pragma Assert (Len = Nbr_Blks * Block_Size);
+
+      if Card_Type = STD_Capacity_SD_Card_V1_1 then
+         Blk := Unsigned_32 (Block_Number * Block_Size);
+      else
+         Blk := Unsigned_32 (Block_Number);
+      end if;
 
       if Nbr_Blks = 1 then
-         Read_Multi_Cmd (Controller, Cmd_Desc (Read_Single_Block),
-                         Unsigned_32 (Block_Number),
-                         Data'Address, Blk_Size, 1, Status);
+         Read_Multi_Cmd (Controller, Cmd_Desc (Read_Single_Block), Blk,
+                         Data'Address, Block_Size, 1, Status);
       else
-         Read_Multi_Cmd (Controller, Cmd_Desc (Read_Multi_Block),
-                         Unsigned_32 (Block_Number),
-                         Data'Address, Blk_Size, Nbr_Blks, Status);
+         Read_Multi_Cmd (Controller, Cmd_Desc (Read_Multi_Block), Blk,
+                         Data'Address, Block_Size, Nbr_Blks, Status);
       end if;
       return Status = OK;
    end Read;
@@ -529,5 +540,13 @@ package body Mmc is
       Status := OK;
    end Reset;
 
-
+   procedure Initialize (Driver : in out SDCard_Driver;
+                         Info   : out Card_Information;
+                         Status : out SD_Error) is
+   begin
+      Card_Identification_Process (Driver, Info, Status);
+      if Status = OK then
+         Card_Type := Info.Card_Type;
+      end if;
+   end Initialize;
 end Mmc;

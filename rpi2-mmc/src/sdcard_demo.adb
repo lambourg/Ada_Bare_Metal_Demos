@@ -268,6 +268,8 @@ is
    end Do_List;
 
    procedure Do_Info is
+      SD_Status     : SD_Error;
+      SCR : SDCard_Configuration_Register;
    begin
       if not Setup then
          return;
@@ -275,7 +277,12 @@ is
 
       Disp_CID (SD_Card_Info.SD_CID);
       New_Line;
-      Disp_SCR (SD_Card_Info.SD_SCR);
+      Read_SCR (EMMC_Driver, SD_Card_Info, SCR, SD_Status);
+      if SD_Status /= OK then
+         Put_Line ("Cannot read SCR");
+      else
+         Disp_SCR (SCR);
+      end if;
       New_Line;
       Disp_CSD (SD_Card_Info.SD_CSD);
       New_Line;
@@ -314,6 +321,78 @@ is
       Put_Line ("MB/s");
    end Do_Speed;
 
+   procedure Do_Read is
+   begin
+      if not Setup then
+         return;
+      end if;
+
+      if not Read (EMMC_Driver, 0, SDCard_Buf.Data (0 .. 511)) then
+         Put_Line ("Read failure");
+         return;
+      end if;
+
+      declare
+         Idx : Natural;
+      begin
+         Idx := 0;
+         while Idx < 512 loop
+            Put (Hex8 (Unsigned_32 (Idx)));
+            Put (": ");
+            for I in Natural range 0 .. 15 loop
+               Put (Hex2 (Unsigned_8 (SDCard_Buf.Data (Idx + I))));
+               if I = 7 then
+                  Put ('-');
+               else
+                  Put (' ');
+               end if;
+            end loop;
+            Put (' ');
+            for I in Natural range 0 .. 15 loop
+               declare
+                  C : constant Character :=
+                    Character'Val (SDCard_Buf.Data (Idx + I));
+               begin
+                  if C not in ' ' .. '~' then
+                     Put ('.');
+                  else
+                     Put (C);
+                  end if;
+               end;
+            end loop;
+
+            New_Line;
+            Idx := Idx + 16;
+         end loop;
+      end;
+   end Do_Read;
+
+   procedure Do_Mbr is
+      MBR : Master_Boot_Record;
+   begin
+      if not Setup then
+         return;
+      end if;
+
+      if Read (EMMC_Driver'Access, MBR) /= OK then
+         Put_Line ("cannot read MBR");
+         return;
+      end if;
+
+      for I in Partition_Number loop
+         if Valid (MBR, I) then
+            Put (Hex2 (Unsigned_8 (I)));
+            Put (": type=");
+            Put (Hex2 (Unsigned_8 (Get_Type (MBR, I))));
+            Put ("  LBA=");
+            Put (Hex16 (LBA (MBR, I)));
+            Put ("  Size=");
+            Put (Hex8 (Sectors (MBR, I)));
+            New_Line;
+         end if;
+      end loop;
+   end Do_Mbr;
+
    C : Character;
 begin
    loop
@@ -321,6 +400,8 @@ begin
       Put_Line ("l: list all files");
       Put_Line ("i: disp card info");
       Put_Line ("s: speed test");
+      Put_Line ("r: read sector 0");
+      Put_Line ("m: print mbr");
       Put_Line ("q: quit");
       loop
          Put ("Your choice ? ");
@@ -338,6 +419,12 @@ begin
                exit;
             when 's' =>
                Do_Speed;
+               exit;
+            when 'r' =>
+               Do_Read;
+               exit;
+            when 'm' =>
+               Do_Mbr;
                exit;
             when others =>
                Put_Line ("Unknown choice");
