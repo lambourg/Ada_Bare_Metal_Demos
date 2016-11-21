@@ -165,127 +165,6 @@ package body Filesystem.FAT is
       return True;
    end "=";
 
-   ---------
-   -- "=" --
-   ---------
-
-   overriding function "=" (Name1, Name2 : FAT_Path) return Boolean
-   is
-      function To_Upper (C : Character) return Character
-      is (if C in 'a' .. 'z'
-          then Character'Val
-            (Character'Pos (C) - Character'Pos ('a') + Character'Pos ('A'))
-          else C);
-
-   begin
-      if Name1.Len /= Name2.Len then
-         return False;
-      end if;
-
-      for J in 1 .. Name1.Len loop
-         if To_Upper (Name1.Name (J)) /= To_Upper (Name2.Name (J)) then
-            return False;
-         end if;
-      end loop;
-
-      return True;
-   end "=";
-
-   ---------
-   -- "-" --
-   ---------
-
-   function "-" (Path : FAT_Path) return String
-   is
-   begin
-      return Path.Name (1 .. Path.Len);
-   end "-";
-
-   ---------
-   -- "-" --
-   ---------
-
-   function "-" (Path : String) return FAT_Path
-   is
-      Ret : FAT_Path;
-   begin
-      Ret.Len := Path'Length;
-      Ret.Name (1 .. Path'Length) := Path;
-      return Ret;
-   end "-";
-
-   ------------
-   -- Append --
-   ------------
-
-   procedure Append
-     (Path : in out FAT_Path;
-      Name : FAT_Name)
-   is
-   begin
-      if Path.Name (Path.Len) /= '/' then
-         Path.Len := Path.Len + 1;
-         Path.Name (Path.Len) := '/';
-      end if;
-
-      Path.Name (Path.Len + 1 .. Path.Len + Name.Len) :=
-        Name.Name (1 .. Name.Len);
-      Path.Len := Path.Len + Name.Len;
-   end Append;
-
-   ------------
-   -- Append --
-   ------------
-
-   procedure Append
-     (Path     : in out FAT_Path;
-      Sub_Path : FAT_Path)
-   is
-   begin
-      if Path.Name (Path.Len) /= '/' then
-         Path.Len := Path.Len + 1;
-         Path.Name (Path.Len) := '/';
-      end if;
-
-      if Sub_Path.Len > 0
-        and then Sub_Path.Name (1) = '/'
-      then
-         Path.Name (Path.Len + 1 .. Path.Len + Sub_Path.Len - 1) :=
-           Sub_Path.Name (2 .. Sub_Path.Len);
-         Path.Len := Path.Len + Sub_Path.Len - 1;
-      else
-         Path.Name (Path.Len + 1 .. Path.Len + Sub_Path.Len) :=
-           Sub_Path.Name (1 .. Sub_Path.Len);
-         Path.Len := Path.Len + Sub_Path.Len;
-      end if;
-   end Append;
-
-   ---------
-   -- "&" --
-   ---------
-
-   function "&" (Path : FAT_Path; Name : FAT_Name) return FAT_Path
-   is
-      Ret : FAT_Path := Path;
-   begin
-      Append (Ret, Name);
-
-      return Ret;
-   end "&";
-
-   ---------
-   -- "&" --
-   ---------
-
-   function "&" (Path : FAT_Path; Sub_Path : FAT_Path) return FAT_Path
-   is
-      Ret : FAT_Path := Path;
-   begin
-      Append (Ret, Sub_Path);
-
-      return Ret;
-   end "&";
-
    -------------
    -- Is_Root --
    -------------
@@ -301,129 +180,111 @@ package body Filesystem.FAT is
    -- Basename --
    --------------
 
-   function Basename (Path : FAT_Path) return FAT_Name
+   function Basename (Path : String) return String
    is
-      Last  : Natural := Path.Len;
-      First : Natural := Path.Name'First;
+      Last  : Natural := Path'Last;
 
    begin
-      if Path.Len = 0 then
-         return -"";
+      if Path'Length = 0 then
+         return "";
       end if;
 
-      if Path.Name (Path.Len) = '/' then
-         Last := Path.Len - 1;
+      if Path (Last) = '/' then
+         Last := Last - 1;
       end if;
 
-      for J in reverse 1 .. Path.Len loop
-         if Path.Name (J) = '/' then
-            First := J + 1;
-
-            exit;
+      for J in reverse 1 .. Last loop
+         if Path (J) = '/' then
+            return Path (J + 1 .. Last);
          end if;
       end loop;
 
-      return -Path.Name (First .. Last);
+      return Path (Path'First .. Last);
    end Basename;
-
-   ---------------
-   -- To_Parent --
-   ---------------
-
-   procedure To_Parent (Path : in out FAT_Path)
-   is
-   begin
-      if Path.Len = 0 then
-         return;
-      end if;
-
-      if Path.Name (Path.Len) = '/' then
-         Path.Len := Path.Len - 1;
-      end if;
-
-      for J in reverse 1 .. Path.Len loop
-         if Path.Name (J) = '/' then
-            Path.Len := J;
-
-            return;
-         end if;
-      end loop;
-
-      Path.Len := 0;
-   end To_Parent;
 
    ------------
    -- Parent --
    ------------
 
-   function Parent (Path : FAT_Path) return FAT_Path
+   function Parent (Path : String) return String
    is
-      Ret  : FAT_Path := Path;
+      Last : Natural;
    begin
-      To_Parent (Ret);
+      if Path'Length = 0 then
+         return "";
+      end if;
 
-      return Ret;
+      Last := (if Path (Path'Last) = '/' then Path'Last - 1 else Path'Last);
+
+      for J in reverse Path'First .. Last loop
+         if Path (J) = '/' then
+            return Path (Path'First .. J);
+         end if;
+      end loop;
+
+      return "";
    end Parent;
 
    ---------------
    -- Normalize --
    ---------------
 
-   procedure Normalize (Path       : in out FAT_Path;
-                        Ensure_Dir : Boolean := False)
+   function Normalize (Path       : String;
+                       Ensure_Dir : Boolean := False) return String
    is
-      Idx      : Natural := 1;
+      Idx      : Integer;
       Prev     : Natural;
       Token    : FAT_Name;
+      Last     : Natural;
+      Ret      : String := Path;
 
    begin
-      if Path.Len = 0 then
-         Path := -"/";
-         return;
-
-      elsif Path.Name (1) /= '/' then
-         Path := -"/" & Path;
+      if Ret'Length = 0 then
+         return "/";
       end if;
 
       --  Preserve initial '/'
-      Idx := 2;
+      if Ret (Ret'First) = '/' then
+         Idx := Ret'First + 1;
+      else
+         Idx := Ret'First;
+      end if;
+
+      Last := Ret'Last;
 
       --  Below: Idx always points to the first character of a path element.
 
-      while Idx <= Path.Len loop
+      while Idx <= Last loop
          Token.Len := 0;
 
-         for J in Idx .. Path.Len loop
-            exit when Path.Name (J) = '/';
+         for J in Idx .. Last loop
+            exit when Ret (J) = '/';
             Token.Len := Token.Len + 1;
-            Token.Name (Token.Len) := Path.Name (J);
+            Token.Name (Token.Len) := Ret (J);
          end loop;
 
          if -Token = "." then
             --  Skip
-            Path.Name (Idx .. Path.Len - 2) :=
-              Path.Name (Idx + 2 .. Path.Len);
-
-            if Idx + 2 > Path.Len then
-               --  Path ends with just a '.'
-               Path.Len := Path.Len - 1;
+            if Idx + 2 > Last then
+               --  Ret ends with just a '.'
+               --  remove it:
+               Last := Last - 1;
             else
-               --  Nominal case: we remove the './'
-               Path.Len := Path.Len - 2;
+               Ret (Idx .. Last - 2) := Ret (Idx + 2 .. Last);
+               Last := Last - 2;
             end if;
 
          elsif -Token = ".." then
-            if Idx = 1 or else
-              (Idx = 2 and then Path.Name (1) = '/')
-            then
-               --  We have "/../foo/bar", invalid but we keep as-is
+            if Idx - 1 <= Ret'First then
+               --  We have "/../<subdirs>", or "../<subdirs>".
+               --  invalid but we keep as-is
                Idx := Idx + 3;
             else
                Prev := 0;
 
                --  Find the parent directory separator
-               for J in reverse 1 .. Idx - 2 loop
-                  if Path.Name (J) = '/' then
+               for J in reverse Ret'First .. Idx - 2 loop
+                  if Ret (J) = '/' then
                      Prev := J + 1;
                      exit;
                   else
@@ -431,33 +292,15 @@ package body Filesystem.FAT is
                   end if;
                end loop;
 
-               --  No such separator, we have either '../foo/bar' or '..'
-               if Prev = 0 then
-                  if Idx + 1 >= Path.Len then
-                     --  General case: there's something after ..
-                     Path.Name (1 .. Path.Len - Idx - 1) :=
-                       Path.Name (Idx + 1 .. Path.Len);
-                     Path.Len := Path.Len - Idx;
-                     Idx := 1;
-                  else
-                     --  For completeness, handle the case where the path is
-                     --  just '..'
-                     Path.Len := 0;
-
-                     return;
-                  end if;
-               else
-                  Path.Name (Prev .. Path.Len + Prev - Idx - 3) :=
-                    Path.Name (Idx + 3 .. Path.Len);
-                  Path.Len := Path.Len + Prev - Idx - 3;
-                  Idx := Prev;
-               end if;
+               Ret (Prev .. Last + Prev - Idx - 3) := Ret (Idx + 3 .. Last);
+               Last := Last + Prev - Idx - 3;
+               Idx := Prev;
             end if;
 
          elsif Token.Len = 0 then
             --  We have two consecutive slashes
-            Path.Name (Idx .. Path.Len - 1) := Path.Name (Idx + 1 .. Path.Len);
-            Path.Len := Path.Len - 1;
+            Ret (Idx .. Last - 1) := Ret (Idx + 1 .. Last);
+            Last := Last - 1;
 
          else
             Idx := Idx + Token.Len + 1;
@@ -465,36 +308,28 @@ package body Filesystem.FAT is
          end if;
       end loop;
 
-      if Ensure_Dir and then
-        (Path.Len = 0 or else Path.Name (Path.Len) /= '/')
-      then
-         Path.Len := Path.Len + 1;
-         Path.Name (Path.Len) := '/';
+      if Last = 0 then
+         if Ensure_Dir then
+            return "/";
+         else
+            return "";
+         end if;
+      else
+         if Ret (Ret'First) /= '/' then
+            if Ensure_Dir and then Ret (Last) /= '/' then
+               return "/" & Ret (Ret'First .. Last) & "/";
+            else
+               return "/" & Ret (Ret'First .. Last);
+            end if;
+         else
+            if Ensure_Dir and then Ret (Last) /= '/' then
+               return Ret (Ret'First .. Last) & "/";
+            else
+               return Ret (Ret'First .. Last);
+            end if;
+         end if;
       end if;
    end Normalize;
-
-   -------------
-   -- FS_Path --
-   -------------
-
-   function FS_Path (Path : FAT_Path) return FAT_Path
-   is
-      First : Natural;
-   begin
-      if Path.Len > 0 and then Path.Name (1) = '/' then
-         First := 2;
-      else
-         First := 1;
-      end if;
-
-      for J in First .. Path.Len loop
-         if Path.Name (J) = '/' then
-            return -Path.Name (J .. Path.Len);
-         end if;
-      end loop;
-
-      return Empty_Path;
-   end FS_Path;
 
    ----------
    -- Trim --
@@ -725,13 +560,11 @@ package body Filesystem.FAT is
       Status : out Status_Code) return access FAT_Directory_Handle'Class
    is
       E      : aliased FAT_Node;
-      Full   : FAT_Path := -Path;
+      Full   : constant String := Normalize (Path);
 
    begin
-      Normalize (Full);
-
-      if not Is_Root (-Full) then
-         Status := Directories.Find (FS, -Full, E);
+      if not Is_Root (Full) then
+         Status := Directories.Find (FS, Full, E);
 
          if Status /= OK then
             return null;
@@ -861,7 +694,7 @@ package body Filesystem.FAT is
          return null;
       end if;
 
-      Status := Directories.Find (FS, -Parent (-Path), Parent_E);
+      Status := Directories.Find (FS, Parent (Path), Parent_E);
 
       if Status /= OK then
          Status := No_Such_File;
@@ -869,7 +702,7 @@ package body Filesystem.FAT is
       end if;
 
       return Open (Parent => Parent_E,
-                   Name   => -Basename (-Path),
+                   Name   => Basename (Path),
                    Mode   => Mode,
                    Status => Status);
    end Open;

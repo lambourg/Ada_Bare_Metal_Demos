@@ -57,54 +57,36 @@ package body Filesystem.FAT.Directories is
    ----------
 
    function Find
-     (Parent     : access FAT_Directory_Handle;
+     (Parent     : FAT_Node;
       Filename   : FAT_Name;
       DEntry     : out FAT_Node) return Status_Code
    is
       --  We use a copy of the handle, so as not to touch the state of initial
       --  handle
       Status  : Status_Code;
+      Cluster : Cluster_Type := Parent.Start_Cluster;
+      Block   : Block_Offset := Parent.FS.Cluster_To_Block (Cluster);
+      Index   : Entry_Index  := 0;
 
    begin
-      Reset (Parent);
-
       loop
-         Status := Read (Parent, DEntry);
+         Status := Next_Entry
+           (FS              => Parent.FS,
+            Current_Cluster => Cluster,
+            Current_Block   => Block,
+            Current_Index   => Index,
+            DEntry          => DEntry);
 
          if Status /= OK then
             return No_Such_File;
          end if;
 
-         if Long_Name (DEntry) = Filename
-           or else Short_Name (DEntry) = Filename
+         if Long_Name (DEntry) = Filename or else
+           (DEntry.L_Name.Len = 0 and then Short_Name (DEntry) = Filename)
          then
             return OK;
          end if;
       end loop;
-   end Find;
-
-   ----------
-   -- Find --
-   ----------
-
-   function Find
-     (Parent   : FAT_Node;
-      Filename : FAT_Name;
-      DEntry   : out FAT_Node) return Status_Code
-   is
-      Handle : access FAT_Directory_Handle;
-      Ret    : Status_Code;
-   begin
-      Handle := Parent.FAT_Open (Ret);
-
-      if Ret /= OK then
-         return Ret;
-      end if;
-
-      Ret := Find (Handle, Filename, DEntry);
-      Close (Handle);
-
-      return Ret;
    end Find;
 
    ----------
@@ -119,15 +101,8 @@ package body Filesystem.FAT.Directories is
       Status  : Status_Code;
       Idx     : Natural;  --  Idx is used to walk through the Path
       Token   : FAT_Name;
-      Current : access FAT_Directory_Handle;
 
    begin
-      Current := FAT_Open (FS, "/", Status);
-
-      if Status /= OK then
-         return Status;
-      end if;
-
       DEntry := Root_Entry (FS);
 
       --  Looping through the Path. We start at 2 as we ignore the initial '/'
@@ -147,8 +122,7 @@ package body Filesystem.FAT.Directories is
 
          Idx := Idx + Token.Len + 1;
 
-         Status := Find (Current, Token, DEntry);
-         Close (Current);
+         Status := Find (DEntry, Token, DEntry);
 
          if Status /= OK then
             return No_Such_File;
@@ -158,12 +132,6 @@ package body Filesystem.FAT.Directories is
             --  Intermediate entry: needs to be a directory
             if not Is_Subdirectory (DEntry) then
                return No_Such_Path;
-            end if;
-
-            Current := FAT_Open (DEntry, Status);
-
-            if Status /= OK then
-               return Status;
             end if;
          end if;
       end loop;
@@ -253,8 +221,11 @@ package body Filesystem.FAT.Directories is
    ----------------
 
    function Next_Entry
-     (Dir    : access FAT_Directory_Handle;
-      DEntry : out    FAT_Directory_Entry) return Status_Code
+     (FS              : access FAT_Filesystem;
+      Current_Cluster : in out Cluster_Type;
+      Current_Block   : in out Block_Offset;
+      Current_Index   : in out Entry_Index;
+      DEntry          : out    FAT_Directory_Entry) return Status_Code
    is
       subtype Entry_Data is Block (1 .. 32);
       function To_Entry is new Ada.Unchecked_Conversion
@@ -264,79 +235,82 @@ package body Filesystem.FAT.Directories is
       Block_Off : Natural;
 
    begin
-      if Dir.Current_Index = 16#FFFF# then
+      if Current_Index = 16#FFFF# then
          return No_More_Entries;
       end if;
 
-      if Dir.Start_Cluster = 0 and then Dir.FS.Version = FAT16 then
-         if Dir.Current_Index >
-           Entry_Index (Dir.FS.FAT16_Root_Dir_Num_Entries)
+      if Current_Cluster = 0 and then FS.Version = FAT16 then
+         if Current_Index >
+           Entry_Index (FS.FAT16_Root_Dir_Num_Entries)
          then
             return No_More_Entries;
          else
             Block_Off :=
-              Natural (FAT_File_Size (Dir.Current_Index * 32) mod
-                           Dir.FS.Block_Size);
-            Dir.Current_Block :=
-              Dir.FS.Root_Dir_Area +
+              Natural (FAT_File_Size (Current_Index * 32) mod
+                           FS.Block_Size);
+            Current_Block :=
+              FS.Root_Dir_Area +
                 Block_Offset
-                  (FAT_File_Size (Dir.Current_Index * 32) / Dir.FS.Block_Size);
+                  (FAT_File_Size (Current_Index * 32) / FS.Block_Size);
          end if;
 
       else
          Block_Off := Natural
-           (FAT_File_Size (Dir.Current_Index * 32) mod Dir.FS.Block_Size);
+           (FAT_File_Size (Current_Index * 32) mod FS.Block_Size);
 
          --  Check if we're on a block boundare
-         if Unsigned_32 (Block_Off) = 0 and then Dir.Current_Index /= 0 then
-            Dir.Current_Block := Dir.Current_Block + 1;
+         if Unsigned_32 (Block_Off) = 0 and then Current_Index /= 0 then
+            Current_Block := Current_Block + 1;
          end if;
 
          --  Check if we're on the boundary of a new cluster
-         if Dir.Current_Block - Dir.FS.Cluster_To_Block (Dir.Current_Cluster)
-           = Dir.FS.Blocks_Per_Cluster
+         if Current_Block - FS.Cluster_To_Block (Current_Cluster)
+           = FS.Blocks_Per_Cluster
          then
             --  The block we need to read is outside of the current cluster.
             --  Let's move on to the next
 
             --  Read the FAT table to determine the next cluster
-            Dir.Current_Cluster := Dir.FS.Get_FAT (Dir.Current_Cluster);
+            Current_Cluster := FS.Get_FAT (Current_Cluster);
 
-            if Dir.Current_Cluster = 1
-              or else Dir.FS.Is_Last_Cluster (Dir.Current_Cluster)
+            if Current_Cluster = 1
+              or else FS.Is_Last_Cluster (Current_Cluster)
             then
                return Internal_Error;
             end if;
 
-            Dir.Current_Block := Dir.FS.Cluster_To_Block (Dir.Current_Cluster);
+            Current_Block := FS.Cluster_To_Block (Current_Cluster);
          end if;
       end if;
 
-      Ret := Dir.FS.Ensure_Block (Dir.Current_Block);
+      Ret := FS.Ensure_Block (Current_Block);
 
       if Ret /= OK then
          return Ret;
       end if;
 
-      if Dir.FS.Window (Block_Off) = 0 then
+      if FS.Window (Block_Off) = 0 then
          --  End of entries: we stick the index here to make sure that further
          --  calls to Next_Entry always end-up here
          return No_More_Entries;
       end if;
 
-      DEntry := To_Entry (Dir.FS.Window (Block_Off .. Block_Off + 31));
-      Dir.Current_Index := Dir.Current_Index + 1;
+      DEntry := To_Entry (FS.Window (Block_Off .. Block_Off + 31));
+      Current_Index := Current_Index + 1;
 
       return OK;
    end Next_Entry;
 
-   ----------
-   -- Read --
-   ----------
+   ----------------
+   -- Next_Entry --
+   ----------------
 
-   function Read
-     (Dir    : access FAT_Directory_Handle;
-      DEntry : out FAT_Node) return Status_Code
+   function Next_Entry
+     (FS              : access FAT_Filesystem;
+      Current_Cluster : in out Cluster_Type;
+      Current_Block   : in out Block_Offset;
+      Current_Index   : in out Entry_Index;
+      DEntry          : out    FAT_Node) return Status_Code
    is
       procedure Prepend
         (Name : Wide_String;
@@ -397,7 +371,12 @@ package body Filesystem.FAT.Directories is
       L_Name_First := L_Name'Last + 1;
 
       loop
-         Ret := Directories.Next_Entry (Dir, D_Entry);
+         Ret := Next_Entry
+           (FS,
+            Current_Cluster => Current_Cluster,
+            Current_Block   => Current_Block,
+            Current_Index   => Current_Index,
+            DEntry          => D_Entry);
 
          if Ret /= OK then
             return Ret;
@@ -451,18 +430,18 @@ package body Filesystem.FAT.Directories is
             end if;
 
             DEntry :=
-              (FS            => Dir.FS,
+              (FS            => FAT_Filesystem_Access (FS),
                L_Name        => <>,
                S_Name        => D_Entry.Filename,
                S_Name_Ext    => D_Entry.Extension,
                Attributes    => D_Entry.Attributes,
-               Start_Cluster => (if Dir.FS.Version = FAT16
+               Start_Cluster => (if FS.Version = FAT16
                                  then Cluster_Type (D_Entry.Cluster_L)
                                  else Cluster_Type (D_Entry.Cluster_L) or
                                    Shift_Left
                                        (Cluster_Type (D_Entry.Cluster_H), 16)),
                Size          => D_Entry.Size,
-               Index         => Dir.Current_Index - 1,
+               Index         => Current_Index - 1,
                Is_Root       => False,
                Is_Dirty      => False);
 
@@ -475,6 +454,23 @@ package body Filesystem.FAT.Directories is
             return OK;
          end if;
       end loop;
+   end Next_Entry;
+
+   ----------
+   -- Read --
+   ----------
+
+   function Read
+     (Dir    : access FAT_Directory_Handle;
+      DEntry : out FAT_Node) return Status_Code
+   is
+   begin
+      return Next_Entry
+        (Dir.FS,
+         Current_Cluster => Dir.Current_Cluster,
+         Current_Block   => Dir.Current_Block,
+         Current_Index   => Dir.Current_Index,
+         DEntry          => DEntry);
    end Read;
 
    -------------------
@@ -771,12 +767,18 @@ package body Filesystem.FAT.Directories is
       D_Entry  : FAT_Directory_Entry;
       Sequence : Natural := 0;
       Ret      : Entry_Index;
+      Cluster  : Cluster_Type := Parent.Start_Cluster;
+      Block    : Block_Offset := Cluster_To_Block (Parent.FS.all, Cluster);
+      Index    : Entry_Index := 0;
 
    begin
-      Reset (Parent);
-
       loop
-         Status := Next_Entry (Parent, D_Entry);
+         Status := Next_Entry
+           (Parent.FS,
+            Current_Cluster => Cluster,
+            Current_Block   => Block,
+            Current_Index   => Index,
+            DEntry          => D_Entry);
 
          if Status /= OK then
             return Null_Index;

@@ -33,10 +33,10 @@ package Filesystem.FAT is
    MAX_FILENAME_LENGTH : constant := 255;
    --  Maximum size of a file or directory name
 
-   MAX_FILE_HANDLES    : constant := 2;
+   MAX_FILE_HANDLES    : constant := 10;
    --  Maximum number of handles opened simultaneously.
 
-   MAX_DIR_HANDLES     : constant := 5;
+   MAX_DIR_HANDLES     : constant := 10;
    --  Maximum number of handles opened simultaneously.
 
    type FAT_Name is private;
@@ -56,39 +56,13 @@ package Filesystem.FAT is
 
    overriding function "=" (Name1, Name2 : FAT_Name) return Boolean;
 
-   type FAT_Path is private;
-
-   Empty_Path : constant FAT_Path;
-
-   function "-" (Path : FAT_Path) return String;
-
-   function "-" (Path : String) return FAT_Path
-     with Pre => Path'Length < MAX_PATH_LENGTH;
-
-   overriding function "=" (Name1, Name2 : FAT_Path) return Boolean;
-
-   procedure Append
-     (Path : in out FAT_Path;
-      Name : FAT_Name);
-
-   procedure Append
-     (Path     : in out FAT_Path;
-      Sub_Path : FAT_Path);
-
-   function "&" (Path : FAT_Path; Name : FAT_Name) return FAT_Path;
-
-   function "&" (Path : FAT_Path; Sub_Path : FAT_Path) return FAT_Path;
-
    function Is_Root (Path : String) return Boolean with Inline_Always;
 
-   procedure To_Parent (Path : in out FAT_Path);
-   function Parent (Path : FAT_Path) return FAT_Path;
-   function Basename (Path : FAT_Path) return FAT_Name;
+   function Parent (Path : String) return String;
+   function Basename (Path : String) return String;
 
-   procedure Normalize (Path       : in out FAT_Path;
-                        Ensure_Dir : Boolean := False);
-
-   function FS_Path (Path : FAT_Path) return FAT_Path;
+   function Normalize (Path       : String;
+                       Ensure_Dir : Boolean := False) return String;
 
    ------------------------
    -- DIRECTORY HANDLING --
@@ -234,15 +208,6 @@ private
       Name : String (1 .. MAX_FILENAME_LENGTH);
       Len  : Natural := 0;
    end record;
-
-   type FAT_Path is record
-      Name : String (1 .. MAX_PATH_LENGTH);
-      Len  : Natural := 0;
-   end record;
-
-   Empty_Path : constant FAT_Path :=
-                  (Name => (others => ' '),
-                   Len  => 0);
 
    type FAT_Disk_Parameter is record
       OEM_Name                : String (1 .. 8);

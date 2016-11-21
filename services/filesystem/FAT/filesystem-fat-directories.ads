@@ -29,14 +29,10 @@ private package Filesystem.FAT.Directories is
       DEntry : out FAT_Node) return Status_Code;
 
    function Find
-     (Parent   : access FAT_Directory_Handle;
-      Filename : FAT_Name;
-      DEntry   : out FAT_Node) return Status_Code;
-
-   function Find
-     (Parent   : FAT_Node;
-      Filename : FAT_Name;
-      DEntry   : out FAT_Node) return Status_Code;
+     (Parent     : FAT_Node;
+      Filename   : FAT_Name;
+      DEntry     : out FAT_Node) return Status_Code
+     with Pre => Is_Subdirectory (Parent);
 
    function Root_Entry (FS : not null access FAT_Filesystem) return FAT_Node;
 
@@ -45,9 +41,18 @@ private package Filesystem.FAT.Directories is
       DEntry : out FAT_Node) return Status_Code;
 
    function Next_Entry
-     (Dir    : access FAT_Directory_Handle;
-      DEntry : out    FAT_Directory_Entry) return Status_Code;
-   --  Returns the next entry for Directory_Handle.
+     (FS              : access FAT_Filesystem;
+      Current_Cluster : in out Cluster_Type;
+      Current_Block   : in out Block_Offset;
+      Current_Index   : in out Entry_Index;
+      DEntry          : out    FAT_Directory_Entry) return Status_Code;
+
+   function Next_Entry
+     (FS              : access FAT_Filesystem;
+      Current_Cluster : in out Cluster_Type;
+      Current_Block   : in out Block_Offset;
+      Current_Index   : in out Entry_Index;
+      DEntry          : out    FAT_Node) return Status_Code;
 
    -------------------------------------
    -- Operations on directory entries --
