@@ -22,14 +22,15 @@
 ------------------------------------------------------------------------------
 
 with Ada.Unchecked_Conversion;
+with Ada.Real_Time;              use Ada.Real_Time;
 
 with HAL.Bitmap;                 use HAL.Bitmap;
 with HAL.Framebuffer;            use HAL.Framebuffer;
 with Bitmapped_Drawing;          use Bitmapped_Drawing;
 
 with Cortex_M.Cache;             use Cortex_M.Cache;
---  with STM32.SDMMC;                use STM32.SDMMC;
 with STM32.Board;                use STM32.Board;
+with STM32.Button;               use STM32.Button;
 with STM32.SDRAM;                use STM32.SDRAM;
 
 with Hershey_Fonts.FuturaL;
@@ -45,11 +46,18 @@ procedure Player is
    procedure Read_Dir
      (Path : String);
 
+   procedure Display_Volume (Vol : Wav_Reader.Volume_Level);
+   procedure Display_VUmeter (Vol : Natural; Y : Natural; W : Natural);
+   procedure Display_Controller;
+
    Error_State : Boolean := False;
    Status      : Filesystem.Status_Code;
    Y           : Natural := 0;
    Font        : constant Hershey_Fonts.Hershey_Font :=
                    Hershey_Fonts.Read (Hershey_Fonts.FuturaL.Font);
+   Now         : Time;
+   Last_Volume : Wav_Reader.Volume_Level := (0.0, 0.0);
+   Last_Time   : Time := Clock;
 
    -------------------------
    -- Display_Current_Dir --
@@ -111,15 +119,121 @@ procedure Player is
       Close (Dir);
    end Read_Dir;
 
+   ------------------------
+   -- Display_Controller --
+   ------------------------
+
+   procedure Display_Controller
+   is
+   begin
+      null;
+   end Display_Controller;
+
+   --------------------
+   -- Display_Volume --
+   --------------------
+
+   procedure Display_Volume (Vol : Wav_Reader.Volume_Level)
+   is
+      W      : constant Natural := Display.Get_Width - 20;
+      X0     : Natural;
+      Tmp_L  : Float;
+      Tmp_R  : Float;
+      Dt     : Float;
+      P_Up   : constant Float := 0.03;
+      P_Down : constant Float := 0.008;
+
+      function Update_Volume (Old    : Float;
+                              Target : Float) return Float;
+
+      function Update_Volume (Old    : Float;
+                              Target : Float) return Float
+      is
+         D : Float;
+         Res : Float;
+      begin
+         D := (Target - Old) / Dt;
+         --  Use a proportional force to move the VUmeter value, then
+         --  clamp in the 0 .. 1 range
+         Res := Old + D * (if D > 0.0 then P_Up else P_Down);
+--           Res := Target;
+         Res := Float'Min (Float'Max (Res, 0.0), 1.0);
+         return Res;
+      end Update_Volume;
+
+   begin
+      Dt          := Float (To_Duration (Clock - Last_Time));
+      Last_Time   := Clock;
+
+      --  Some hand-crafted values so that the volume meter looks good:
+      --  What we have is the RMS of the signal, so this'll never reach
+      --  1.0. Let's increase the range to get a full range vu-meter.
+      Tmp_L := Update_Volume (Last_Volume.L, Vol.L * 2.0);
+      Tmp_R := Update_Volume (Last_Volume.R, Vol.R * 2.0);
+
+      Last_Volume := (L => Tmp_L,
+                      R => Tmp_R);
+
+      Display.Get_Hidden_Buffer (1).Fill_Rect
+        (Transparent,
+         X      => 10,
+         Y      => Display.Get_Height - 35,
+         Width  => W,
+         Height => 25);
+
+      X0 := Natural (Float (W) * Tmp_L);
+      Display_VUmeter
+        (X0, Display.Get_Height - 35, W);
+
+      X0 := Natural (Float (W) * Tmp_R);
+      Display_VUmeter
+        (X0, Display.Get_Height - 20, W);
+
+      Display.Update_Layer (1, True);
+   end Display_Volume;
+
+   ---------------------
+   -- Display_VUmeter --
+   ---------------------
+
+   procedure Display_VUmeter
+     (Vol    : Natural;
+      Y      : Natural;
+      W      : Natural)
+   is
+      Steps  : constant := 20;
+      Step_W : constant Natural := W / Steps;
+      Color  : Bitmap_Color;
+   begin
+      for J in 1 .. Steps loop
+         exit when J * Step_W + Step_W / 2 > Vol;
+         if J <= (Steps / 2) then
+            Color := (255, 0, 192, 0);
+         elsif J <= (Steps * 4 / 5) then
+            Color := HAL.Bitmap.Orange;
+         else
+            Color := HAL.Bitmap.Red;
+         end if;
+
+         Display.Get_Hidden_Buffer (1).Fill_Rect
+           (Color,
+            X      => 10 + Step_W * (J - 1),
+            Y      => Y,
+            Width  => Step_W - 1,
+            Height => 10);
+      end loop;
+   end Display_VUmeter;
+
 begin
    Cortex_M.Cache.Disable_D_Cache;
+   STM32.Button.Initialize;
    STM32.SDRAM.Initialize;
    Display.Initialize (Portrait, Interrupt);
    Display.Initialize_Layer (1, ARGB_8888);
    Display.Set_Background (255, 255, 255);
 
    SDCard_Device.Initialize;
-   Wav_Reader.Initialize (Volume => 40);
+   Wav_Reader.Initialize (Volume => 60);
 
    loop
       if not SDCard_Device.Card_Present then
@@ -133,7 +247,10 @@ begin
             Transparent);
          Display.Update_Layer (1);
 
+         --  In case the FS is still mounted: unmount it, else ignore the
+         --  status anyway.
          Status := Unmount ("sdcard");
+         Wav_DB.Reset_DB;
 
          loop
             if SDCard_Device.Card_Present then
@@ -212,6 +329,7 @@ begin
                         Wav_DB.Select_Album (S, K);
 
                         Display.Get_Hidden_Buffer (1).Fill (Transparent);
+                        Display_Controller;
                         Y := 0;
 
                         Draw_String
@@ -283,23 +401,40 @@ begin
 
                            if Status = OK then
                               if Wav_Reader.Read_Header (F, I) /= OK then
-                                 Draw_String
-                                   (Display.Get_Hidden_Buffer (1),
-                                    (0, Y),
-                                    "Cannot read WAV information",
-                                    BMP_Fonts.Font12x12,
-                                    HAL.Bitmap.Red,
-                                    Transparent);
-                                 Display.Update_Layer (1, True);
-                                 Y := Y + 13;
-                              else
-                                 Play (F, I);
-                                 exit Player_Loop when
-                                   not SDCard_Device.Card_Present;
+                                 Status := Disk_Error;
                               end if;
-
-                              Close (F);
                            end if;
+
+                           if Status /= OK then
+                              Draw_String
+                                (Display.Get_Hidden_Buffer (1),
+                                 (0, Y),
+                                 "Cannot read WAV information",
+                                 BMP_Fonts.Font12x12,
+                                 HAL.Bitmap.Red,
+                                 Transparent);
+                              Display.Update_Layer (1, True);
+                              Y := Y + 13;
+                           else
+                              Play (F, I);
+                              loop
+                                 Now := Clock;
+                                 exit when not Is_Playing;
+                                 exit when STM32.Button.Has_Been_Pressed;
+                                 exit when not SDCard_Device.Card_Present;
+
+                                 Display_Volume (Current_Volume);
+
+                                 delay until Now + Milliseconds (20);
+                              end loop;
+
+                              Stop;
+                           end if;
+
+                           Close (F);
+
+                           exit Player_Loop when
+                             not SDCard_Device.Card_Present;
                         end loop;
                      end loop;
                   end loop;

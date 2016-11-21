@@ -28,6 +28,11 @@ with Filesystem;
 
 package Wav_Reader is
 
+   type Volume_Level is record
+      L : Float;
+      R : Float;
+   end record;
+
    type WAV_Status_Code is
      (OK,
       Not_A_WAV_File,
@@ -82,5 +87,11 @@ package Wav_Reader is
    procedure Play
      (F    : Filesystem.File_Handle;
       Info : WAV_Info);
+
+   function Is_Playing return Boolean;
+
+   function Current_Volume return Volume_Level;
+
+   procedure Stop;
 
 end Wav_Reader;

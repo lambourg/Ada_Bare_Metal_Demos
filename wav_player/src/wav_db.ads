@@ -30,6 +30,9 @@ package Wav_DB is
    procedure Update_DB;
    --  Set up the proper indexes internal to the DB.
 
+   procedure Reset_DB;
+   --  Clears values from the database
+
    type Selection is private;
 
    function New_Selection return Selection;

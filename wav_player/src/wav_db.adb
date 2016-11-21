@@ -206,6 +206,19 @@ package body Wav_DB is
       end loop;
    end Update_DB;
 
+   --------------
+   -- Reset_DB --
+   --------------
+
+   procedure Reset_DB
+   is
+   begin
+      Files   := null;
+      Last    := 0;
+      Artists := (others => 0);
+      Albums  := (others => 0);
+   end Reset_DB;
+
    -------------------
    -- New_Selection --
    -------------------
