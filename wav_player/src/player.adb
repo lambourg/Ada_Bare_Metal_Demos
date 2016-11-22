@@ -43,11 +43,11 @@ with Wav_DB;
 
 procedure Player is
 
-   procedure Read_Dir
-     (Path : String);
+   subtype Percent is Natural range 0 .. 100;
 
+   procedure Read_Dir (Path : String);
    procedure Display_Volume (Vol : Wav_Reader.Volume_Level);
-   procedure Display_VUmeter (Vol : Natural; Y : Natural; W : Natural);
+   procedure Display_VUmeter (Vol : Percent; Y : Natural; W : Natural);
    procedure Display_Controller;
 
    Error_State : Boolean := False;
@@ -136,27 +136,32 @@ procedure Player is
    procedure Display_Volume (Vol : Wav_Reader.Volume_Level)
    is
       W      : constant Natural := Display.Get_Width - 20;
-      X0     : Natural;
       Tmp_L  : Float;
       Tmp_R  : Float;
       Dt     : Float;
-      P_Up   : constant Float := 0.03;
-      P_Down : constant Float := 0.008;
 
       function Update_Volume (Old    : Float;
                               Target : Float) return Float;
+      --  Update the volume VUmeter level with a simple Proportional algo to
+      --  simulate an actual VUmeter device.
+
+      -------------------
+      -- Update_Volume --
+      -------------------
 
       function Update_Volume (Old    : Float;
                               Target : Float) return Float
       is
-         D : Float;
-         Res : Float;
+         P_Up   : constant Float := 0.03;
+         P_Down : constant Float := 0.005;
+         D      : Float;
+         Res    : Float;
+
       begin
          D := (Target - Old) / Dt;
          --  Use a proportional force to move the VUmeter value, then
          --  clamp in the 0 .. 1 range
          Res := Old + D * (if D > 0.0 then P_Up else P_Down);
---           Res := Target;
          Res := Float'Min (Float'Max (Res, 0.0), 1.0);
          return Res;
       end Update_Volume;
@@ -168,8 +173,8 @@ procedure Player is
       --  Some hand-crafted values so that the volume meter looks good:
       --  What we have is the RMS of the signal, so this'll never reach
       --  1.0. Let's increase the range to get a full range vu-meter.
-      Tmp_L := Update_Volume (Last_Volume.L, Vol.L * 2.0);
-      Tmp_R := Update_Volume (Last_Volume.R, Vol.R * 2.0);
+      Tmp_L := Update_Volume (Last_Volume.L, Vol.L * 3.0);
+      Tmp_R := Update_Volume (Last_Volume.R, Vol.R * 3.0);
 
       Last_Volume := (L => Tmp_L,
                       R => Tmp_R);
@@ -181,13 +186,11 @@ procedure Player is
          Width  => W,
          Height => 25);
 
-      X0 := Natural (Float (W) * Tmp_L);
       Display_VUmeter
-        (X0, Display.Get_Height - 35, W);
+        (Percent (Tmp_L * 100.0), Display.Get_Height - 35, W);
 
-      X0 := Natural (Float (W) * Tmp_R);
       Display_VUmeter
-        (X0, Display.Get_Height - 20, W);
+        (Percent (Tmp_R * 100.0), Display.Get_Height - 20, W);
 
       Display.Update_Layer (1, True);
    end Display_Volume;
@@ -197,7 +200,7 @@ procedure Player is
    ---------------------
 
    procedure Display_VUmeter
-     (Vol    : Natural;
+     (Vol    : Percent;
       Y      : Natural;
       W      : Natural)
    is
@@ -206,10 +209,10 @@ procedure Player is
       Color  : Bitmap_Color;
    begin
       for J in 1 .. Steps loop
-         exit when J * Step_W + Step_W / 2 > Vol;
+         exit when Vol * 2 * Steps < 100 * 2 * J - 1;
          if J <= (Steps / 2) then
             Color := (255, 0, 192, 0);
-         elsif J <= (Steps * 4 / 5) then
+         elsif J <= (Steps * 5 / 6) then
             Color := HAL.Bitmap.Orange;
          else
             Color := HAL.Bitmap.Red;
@@ -425,7 +428,7 @@ begin
 
                                  Display_Volume (Current_Volume);
 
-                                 delay until Now + Milliseconds (20);
+                                 delay until Now + Milliseconds (30);
                               end loop;
 
                               Stop;

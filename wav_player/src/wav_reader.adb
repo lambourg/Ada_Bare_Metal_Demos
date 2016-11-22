@@ -37,9 +37,8 @@ with Cortex_M.FPU;  use Cortex_M.FPU;
 package body Wav_Reader is
 
    subtype Buffer_Type is Audio_Buffer (1 .. 4 * 1024);
-   Buffer : aliased Buffer_Type := (others => 0);
-
-   The_Volume : Volume_Level := (0.0, 0.0);
+   Buffer          : aliased Buffer_Type := (others => 0);
+   First_Byte_Left : Boolean := True;
 
    protected Buffer_Scheduler is
       pragma Interrupt_Priority;
@@ -213,19 +212,19 @@ package body Wav_Reader is
          --  Read a few data to make sure that next read operations are aligned
          --  on blocks: this speeds greatly the read procedure
          Buffer_Scheduler.Next_Index (Idx, Len);
-         Initial_Length := 512 - (Offset (W.F) mod 512);
+         Initial_Length := (512 - (Offset (W.F) mod 512));
          Status := W.F.Read
            (Buffer (Idx + Len - Integer (Initial_Length / 2) - 1)'Address,
             Initial_Length);
          Total := Unsigned_32 (Initial_Length / 2);
+         --  Tell the volume meter which side is the first value of the buffer:
+         --  Data is 16-bit aligned, so if we're not 32-bit aligned, we need
+         --  to switch left/right
+         First_Byte_Left := (Initial_Length mod 4) = 0;
 
          loop
             declare
                Cnt : File_Size;
-               Val : Float;
-               RMS_L : Float := 0.0;
-               RMS_R : Float := 0.0;
-
             begin
                Buffer_Scheduler.Next_Index (Idx, Len);
 
@@ -234,24 +233,6 @@ package body Wav_Reader is
                Status := W.F.Read (Buffer (Idx)'Address, Cnt);
                STM32.Board.Turn_Off (STM32.Board.Green);
                Total := Total + Unsigned_32 (Cnt / 2);
-
-               --  Update the Volume value with the RMS of the just read buffer
-               for J in Idx .. Idx + Len - 1 loop
-                  Val := Float (Buffer (J)) / 32768.0;
-
-                  if ((Natural (Initial_Length) / 2 + J) mod 2) = 0 then
-                     RMS_R := RMS_R + Val ** 2;
-                  else
-                     RMS_L := RMS_L + Val ** 2;
-                  end if;
-               end loop;
-
-               RMS_L := Sqrt (RMS_L / Float (Len / 2));
-               RMS_R := Sqrt (RMS_R / Float (Len / 2));
-
-               The_Volume :=
-                 (L => RMS_L,
-                  R => RMS_R);
 
                exit when Total >= W.Info.Data_Size or else Cnt = 0;
                exit when Controller.Done_Playing;
@@ -492,8 +473,27 @@ package body Wav_Reader is
 
    function Current_Volume return Volume_Level
    is
+      Val   : Float;
+      RMS_L : Float := 0.0;
+      RMS_R : Float := 0.0;
+
    begin
-      return The_Volume;
+      --  Update the Volume value with the RMS of the just read buffer
+      for J in Buffer'Range loop
+         Val := Float (Buffer (J)) / 32768.0;
+
+         if (J mod 2) = (if First_Byte_Left then 0 else 1) then
+            RMS_L := RMS_L + Val ** 2;
+         else
+            RMS_R := RMS_R + Val ** 2;
+         end if;
+      end loop;
+
+      RMS_L := Sqrt (RMS_L / Float (Buffer'Length / 2));
+      RMS_R := Sqrt (RMS_R / Float (Buffer'Length / 2));
+
+      return (L => RMS_L,
+              R => RMS_R);
    end Current_Volume;
 
    ----------
