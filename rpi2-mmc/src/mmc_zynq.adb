@@ -27,7 +27,7 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with HAL; use Hal;
+with HAL; use HAL;
 with HAL.SDCard; use HAL.SDCard;
 with Hex_Images; use Hex_Images;
 
@@ -41,25 +41,25 @@ with Ada.Unchecked_Conversion;
 with Ada.Real_Time; use Ada.Real_Time;
 with Ada.Text_IO; use Ada.Text_IO;
 
-package body Mmc is
+package body MMC is
 
    Flag_Trace : constant Boolean := False;
 
    --  SDIO
    type SDIO_Registers_Type is record
-      -- At 0x00
+      --  At 0x00
       SDMA_Addr  : Unsigned_32;
       BLKSIZECNT : Unsigned_32;
       Arg1       : Unsigned_32;
       CMDTM      : Unsigned_32;
 
-      -- At 0x10
+      --  At 0x10
       RSP0 : Unsigned_32;
       RSP1 : Unsigned_32;
       RSP2 : Unsigned_32;
       RSP3 : Unsigned_32;
 
-      -- At 0x20
+      --  At 0x20
       Data     : Unsigned_32;
       Status   : Unsigned_32;
       Control0 : Unsigned_32;
@@ -149,6 +149,10 @@ package body Mmc is
       CMD_INHIBIT : constant := 2**0;
       DAT_INHIBIT : constant := 2**1;
 
+      --  Control 0
+      DTWIDTH_4B : constant := 2**1;
+      HSPEED_EN  : constant := 2**2;
+
       --  Control 1
       SRST_DATA  : constant := 2**26;
       SRST_CMD   : constant := 2**25;
@@ -160,6 +164,7 @@ package body Mmc is
       --  Interrupt
       CMD_DONE : constant := 2**0;
       DATA_DONE : constant := 2**1;
+      DMA_INT : constant := 2**3;
       WRITE_RDY : constant := 2**4;
       READ_RDY : constant := 2**5;
       ERR : constant := 2**15;
@@ -188,6 +193,7 @@ package body Mmc is
      (This : in out SDCard_Driver;
       Cmd : Cmd_Desc_Type;
       Arg : Unsigned_32;
+      Dma_Enable : Boolean;
       Status : out SD_Error)
    is
       use SDIO_Bits;
@@ -217,7 +223,7 @@ package body Mmc is
            | Rsp_R7 =>
             --  CRC, IXCHK, 48 bits
             Cmd_Val := Cmd_Val or 16#1a_0000#;
-         when Rsp_R1b =>
+         when Rsp_R1B =>
             --  CRC, IXCHK, 48 bits with busy
             Cmd_Val := Cmd_Val or 16#1b_0000#;
          when Rsp_R2 =>
@@ -245,6 +251,10 @@ package body Mmc is
             Cmd_Val := Cmd_Val or 16#20_0026#;
       end case;
 
+      if Dma_Enable then
+         Cmd_Val := Cmd_Val or 16#01#;
+      end if;
+
       if Flag_Trace then
          Put ("EMMC_cmd: int=");
          Put (Hex8 (SDIO.Interrupt));
@@ -266,7 +276,7 @@ package body Mmc is
          Put (Hex2 (Unsigned_8 (Cmd.Cmd)));
          Put (", int=");
          Put_Line (Hex8 (Irpts));
-         if (Irpts and CTO_Err) /= 0 then
+         if (Irpts and CTO_ERR) /= 0 then
             Reset_Cmd;
             Status := Command_Timeout_Error;
          else
@@ -275,7 +285,7 @@ package body Mmc is
          return;
       end if;
 
-      if Cmd.Rsp = Rsp_R1b then
+      if Cmd.Rsp = Rsp_R1B then
          loop
             Irpts := SDIO.Interrupt;
             exit when (Irpts and (DATA_DONE or ERR)) /= 0;
@@ -295,6 +305,15 @@ package body Mmc is
       Status := OK;
    end Send_Cmd;
 
+   procedure Send_Cmd
+     (This : in out SDCard_Driver;
+      Cmd : Cmd_Desc_Type;
+      Arg : Unsigned_32;
+      Status : out SD_Error) is
+   begin
+      Send_Cmd (This, Cmd, Arg, False, Status);
+   end Send_Cmd;
+
    procedure Read_Rsp48
      (This : in out SDCard_Driver;
       Rsp : out Unsigned_32) is
@@ -312,6 +331,48 @@ package body Mmc is
       W3 := Shift_Left (SDIO.RSP0, 8);
    end Read_Rsp136;
 
+   function Read8 (Addr : Address) return Unsigned_8 is
+      Res : Unsigned_8 with Address => Addr, Import;
+   begin
+      return Res;
+   end Read8;
+
+   procedure Dump_Buf (Addr : Address; Len : Unsigned_32)
+   is
+      use System.Storage_Elements;
+      Idx : Unsigned_32;
+   begin
+      Idx := 0;
+      while Idx < Len loop
+         Put (Hex8 (Unsigned_32 (Idx)));
+         Put (": ");
+         for I in Unsigned_32 range 0 .. 15 loop
+            Put (Hex2 (Unsigned_8 (Read8 (Addr + Storage_Offset (Idx + I)))));
+            if I = 7 then
+               Put ('-');
+            else
+               Put (' ');
+            end if;
+         end loop;
+         Put (' ');
+         for I in Unsigned_32 range 0 .. 15 loop
+            declare
+               C : constant Character :=
+                 Character'Val (Read8 (Addr + Storage_Offset (Idx + I)));
+            begin
+               if C not in ' ' .. '~' then
+                  Put ('.');
+               else
+                  Put (C);
+               end if;
+            end;
+         end loop;
+
+         New_Line;
+         Idx := Idx + 16;
+      end loop;
+   end Dump_Buf;
+
    procedure Read_Multi_Cmd
      (This : in out SDCard_Driver;
       Cmd : Cmd_Desc_Type;
@@ -321,13 +382,15 @@ package body Mmc is
       Nbr_Blk : Unsigned_32;
       Status : out SD_Error)
    is
+      use System.Storage_Elements;
+      function To_Unsigned_32 is new Ada.Unchecked_Conversion
+        (System.Address, Unsigned_32);
+
       use SDIO_Bits;
       Irpts : Unsigned_32;
-      use System.Storage_Elements;
-      Addr : Address := Buf;
-      L : Unsigned_32 := Len;
    begin
-      SDIO.BLKSIZECNT := Nbr_Blk * 2**16 + Len;
+      --  512KB DMA transfer bounds
+      SDIO.BLKSIZECNT := Nbr_Blk * 2**16 + 7 * 2**12 + Len;
 
       if Flag_Trace then
          Put ("read_multi: nbr=");
@@ -336,56 +399,92 @@ package body Mmc is
          Put (Unsigned_32'Image (Len));
          Put (", arg=");
          Put (Unsigned_32'Image (Arg));
+         Put (", buf=");
+         Put (Hex8 (To_Unsigned_32 (Buf)));
          New_Line;
       end if;
 
-      Send_Cmd (This, Cmd, Arg, Status);
-      if Status /= Ok then
+      if Use_DMA then
+         Dcache_Flush_By_Range (Buf, Storage_Count (Nbr_Blk * Len));
+
+         --  Set DMA transfer address
+         SDIO.SDMA_Addr := To_Unsigned_32 (Buf);
+      end if;
+
+      --  Send command
+      Send_Cmd (This, Cmd, Arg, Use_DMA, Status);
+      if Status /= OK then
          return;
       end if;
 
       --  Wait for data complete interrupt
-      Addr := Buf;
-      for I in 1 .. Nbr_Blk loop
-         if False then
-            Put ("read blk #");
-            Put_Line (Hex8 (Arg + I - 1));
-         end if;
+      if Use_DMA then
          loop
             Irpts := SDIO.Interrupt;
-            exit when (Irpts and (READ_RDY or ERR)) /= 0;
+            if Flag_Trace and Irpts /= 0 then
+               Put ("IRPTS:");
+               Put_Line (Hex8 (Irpts));
+            end if;
+            exit when (Irpts and (DATA_DONE or ERR)) /= 0;
+            if (Irpts and DMA_INT) /= 0 then
+               if Flag_Trace then
+                  Put ("CTRL0:");
+                  Put (Hex8 (SDIO.Control0));
+                  Put (", DMA addr:");
+                  Put_Line (Hex8 (SDIO.SDMA_Addr));
+               end if;
+               SDIO.Interrupt := DMA_INT;
+               SDIO.SDMA_Addr := SDIO.SDMA_Addr;
+            end if;
          end loop;
-         if (Irpts and ERR) /= 0 then
-            Put ("EMMC_Read: read error, int=");
-            Put_Line (Hex8 (Irpts));
-            Status := Error;
-            return;
-         end if;
-         SDIO.Interrupt := 16#ffff_0000# or READ_RDY;
+      else
+         --  Polling
+         declare
+            use System.Storage_Elements;
+            Addr : System.Address;
+            L : Unsigned_32;
+         begin
+            Addr := Buf;
+            for I in 1 .. Nbr_Blk loop
+               if False then
+                  Put ("read blk #");
+                  Put_Line (Hex8 (Arg + I - 1));
+               end if;
+               loop
+                  Irpts := SDIO.Interrupt;
+                  exit when (Irpts and (READ_RDY or ERR)) /= 0;
+               end loop;
+               if (Irpts and ERR) /= 0 then
+                  Put ("EMMC_Read: read error, int=");
+                  Put_Line (Hex8 (Irpts));
+                  Status := Error;
+                  return;
+               end if;
+               SDIO.Interrupt := 16#ffff_0000# or READ_RDY;
 
-         pragma Assert (Len mod 4 = 0);
-         L := Len;
-         while L > 0 loop
-            declare
-               V : Unsigned_32 with Address => Addr, Import, Volatile;
-            begin
-               V := SDIO.Data;
-            end;
-            Addr := Addr + 4;
-            L := L - 4;
-         end loop;
-      end loop;
-      loop
-         Irpts := SDIO.Interrupt;
-         exit when (Irpts and (DATA_DONE or ERR)) /= 0;
-      end loop;
+               --  Transfer
+               pragma Assert (Len mod 4 = 0);
+               L := Len;
+               while L > 0 loop
+                  declare
+                     V : Unsigned_32 with Address => Addr, Import, Volatile;
+                  begin
+                     V := SDIO.Data;
+                  end;
+                  Addr := Addr + 4;
+                  L := L - 4;
+               end loop;
+            end loop;
+         end;
+      end if;
       if (Irpts and ERR) /= 0 then
-         Put_Line ("EMMC_Read: data_done error");
+         Put ("EMMC_Read: data_done error, IRPTS=");
+         Put_Line (Hex8 (Irpts));
          Status := Error;
          return;
       end if;
 
-      SDIO.Interrupt := 16#ffff_0000# or DATA_DONE;
+      SDIO.Interrupt := 16#ffff_0000# or (DATA_DONE or DMA_INT);
    end Read_Multi_Cmd;
 
    procedure Read_Cmd
@@ -448,6 +547,11 @@ package body Mmc is
       Div : Natural;
       Ctrl : Unsigned_32;
    begin
+      if Flag_Trace then
+         Put ("SDIO: set clock");
+         Put_Line (Natural'Image (Freq));
+      end if;
+
       if Mmc_Clk = 0 or else Freq = 0 then
          return;
       end if;
@@ -478,6 +582,9 @@ package body Mmc is
       Ctrl := Ctrl or Shift_Left (Unsigned_32 (Div) and 16#ff#, 8);
       Ctrl := Ctrl or CLK_INTLEN;
       SDIO.Control1 := Ctrl;
+      if Freq > 25_000_000 then
+         SDIO.Control0 := SDIO.Control0 or HSPEED_EN;
+      end if;
       delay until Clock + Milliseconds (2);
 
       --  Wait until stabilized.
@@ -502,18 +609,19 @@ package body Mmc is
      (This : in out SDCard_Driver;
       Mode : Wide_Bus_Mode)
    is
+      use SDIO_Bits;
       V : Unsigned_32;
    begin
       V := SDIO.Control0;
-      V := V and not 16#22#;
+      V := V and not DTWIDTH_4B;
 
       case Mode is
          when Wide_Bus_1B =>
             null;
          when Wide_Bus_4B =>
-            V := V or 2;
+            V := V or DTWIDTH_4B;
          when Wide_Bus_8B =>
-            V := V or 16#20#;
+            raise Constraint_Error;
       end case;
 
       SDIO.Control0 := V;
@@ -526,7 +634,7 @@ package body Mmc is
       use SDIO_Bits;
    begin
       --  Reset controller
-      SDIO.Control0 := 0;
+      SDIO.Control0 := 0;  -- Use SDMA
       SDIO.Control1 := 16#070ffa20#;
       SDIO.Control2 := 0;
 
@@ -553,4 +661,4 @@ package body Mmc is
          Card_Type := Info.Card_Type;
       end if;
    end Initialize;
-end Mmc;
+end MMC;

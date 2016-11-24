@@ -30,13 +30,15 @@
 with System;
 with Interfaces; use Interfaces;
 
-with HAL; use Hal;
+with HAL; use HAL;
 with HAL.SDCard; use HAL.SDCard;
 with HAL.Block_Drivers; use HAL.Block_Drivers;
 
 package MMC is
    type SDCard_Driver is new HAL.SDCard.SDCard_Driver
      and HAL.Block_Drivers.Block_Driver with null record;
+
+   Use_DMA : Boolean := True;
 
    overriding procedure Reset
      (This : in out SDCard_Driver;

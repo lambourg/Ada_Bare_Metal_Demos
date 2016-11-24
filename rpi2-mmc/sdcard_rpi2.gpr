@@ -13,6 +13,11 @@ project SDCard_RPI2 is
                         "../services/filesystem/mbr",
 			"../services/filesystem/VFS",
                         "../services/filesystem/FAT");
+
+   package Compiler is
+     for Default_Switches ("Ada") use ("-O", "-gnatyg-s");
+   end Compiler;
+
    package Naming is
      case Board is
        when "RPI2" =>

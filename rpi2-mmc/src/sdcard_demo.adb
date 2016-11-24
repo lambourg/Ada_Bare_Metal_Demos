@@ -109,7 +109,7 @@ is
       case SD_Card_Info.Card_Type is
          when STD_Capacity_SD_Card_V1_1 =>
             Put_Line ("SD card v1.1");
-         when STD_Capacity_SD_Card_V2_0 =>
+         when STD_Capacity_SD_Card_v2_0 =>
             Put_Line ("SD card v2.0");
          when High_Capacity_SD_Card =>
             Put_Line ("SD card high capacity");
@@ -117,16 +117,16 @@ is
             Put_Line ("MMC");
          when High_Speed_Multimedia_Card =>
             Put_Line ("High speed MMC");
-         when High_Capacity_Mmc_Card =>
+         when High_Capacity_MMC_Card =>
             Put_Line ("High speed MMC");
-         when Secure_Digital_Io_Card =>
+         when Secure_Digital_IO_Card =>
             Put_Line ("SDIO card");
-         when Secure_Digital_Io_Combo_Card =>
+         when Secure_Digital_IO_Combo_Card =>
             Put_Line ("SDIO combo card");
       end case;
    end Disp_Info;
 
-   procedure Disp_CID (CID: Card_Identification_Data_Register) is
+   procedure Disp_CID (CID : Card_Identification_Data_Register) is
    begin
       Put ("MID: ");
       Put (Hex2 (CID.Manufacturer_ID));
@@ -150,7 +150,7 @@ is
       New_Line;
    end Disp_CID;
 
-   procedure Disp_CSD (CSD: Card_Specific_Data_Register) is
+   procedure Disp_CSD (CSD : Card_Specific_Data_Register) is
    begin
       Put ("CSD structure V");
       Put (Byte'Image (CSD.CSD_Structure + 1));
@@ -232,7 +232,7 @@ is
          Put (" ??");
       end if;
       Put (", EX_Security:");
-      Put (Byte'Image (SCR.EX_Security));
+      Put (Byte'Image (SCR.Ex_Security));
       Put (", CMD_Support:");
       Put (Byte'Image (SCR.CMD_Support));
       New_Line;
@@ -328,13 +328,13 @@ is
       Put_Line ("MB/s");
    end Do_Speed;
 
-   procedure Do_Read is
+   procedure Do_Read (Blk : Unsigned_64) is
    begin
       if not Setup then
          return;
       end if;
 
-      if not Read (EMMC_Driver, 0, SDCard_Buf.Data (0 .. 511)) then
+      if not Read (EMMC_Driver, Blk, SDCard_Buf.Data (0 .. 511)) then
          Put_Line ("Read failure");
          return;
       end if;
@@ -409,6 +409,7 @@ begin
       Put_Line ("s: speed test");
       Put_Line ("r: read sector 0");
       Put_Line ("m: print mbr");
+      Put_Line ("d: toggle DMA");
       Put_Line ("q: quit");
       loop
          Put ("Your choice ? ");
@@ -428,10 +429,21 @@ begin
                Do_Speed;
                exit;
             when 'r' =>
-               Do_Read;
+               Do_Read (0);
+               exit;
+            when '1' =>
+               Do_Read (32);
                exit;
             when 'm' =>
                Do_Mbr;
+               exit;
+            when 'd' =>
+               MMC.Use_DMA := not MMC.Use_DMA;
+               if MMC.Use_DMA then
+                  Put_Line ("DMA enabled");
+               else
+                  Put_Line ("DMA disabled");
+               end if;
                exit;
             when others =>
                Put_Line ("Unknown choice");
