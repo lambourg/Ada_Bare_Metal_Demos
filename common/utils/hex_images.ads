@@ -2,20 +2,24 @@ with HAL; use HAL;
 with Images_Gen;
 
 package Hex_Images is
+   --  Hex2
+
    package Byte_Image_Pkg is new Images_Gen (2, Byte);
 
    function Hex2 (V : Byte) return Byte_Image_Pkg.Fixed_String
      renames Byte_Image_Pkg.Hex;
 
+   --  Hex8
 
-   package Uint32_Image_Pkg is new Images_Gen (8, Uint32);
+   package UInt32_Image_Pkg is new Images_Gen (8, UInt32);
 
-   function Hex8 (V : Uint32) return Uint32_Image_Pkg.Fixed_String
-     renames Uint32_Image_Pkg.Hex;
+   function Hex8 (V : UInt32) return UInt32_Image_Pkg.Fixed_String
+     renames UInt32_Image_Pkg.Hex;
 
+   --  Hex16
 
-   package Uint64_Image_Pkg is new Images_Gen (16, Uint64);
+   package UInt64_Image_Pkg is new Images_Gen (16, UInt64);
 
-   function Hex16 (V : Uint64) return Uint64_Image_Pkg.Fixed_String
-     renames Uint64_Image_Pkg.Hex;
+   function Hex16 (V : UInt64) return UInt64_Image_Pkg.Fixed_String
+     renames UInt64_Image_Pkg.Hex;
 end Hex_Images;
