@@ -40,10 +40,13 @@ with Interfaces; use Interfaces;
 with Ada.Unchecked_Conversion;
 with Ada.Real_Time; use Ada.Real_Time;
 with Ada.Text_IO; use Ada.Text_IO;
+with Ada.Interrupts.Names;
 
 package body MMC is
 
    Flag_Trace : constant Boolean := False;
+
+   Use_Interrupts : constant Boolean := True;
 
    --  SDIO
    type SDIO_Registers_Type is record
@@ -170,14 +173,50 @@ package body MMC is
       ERR : constant := 2**15;
       CTO_ERR : constant := 2**16;
       DTO_ERR : constant := 2**20;
+      ANY_ERR : constant := 16#ffff# * 2**16;
    end SDIO_Bits;
 
-   SDIO_Base : constant := 16#E010_0000#;
+   SDIO_Base : constant := 16#E010_0000#; --  SDIO #0
 
    SDIO : SDIO_Registers_Type
      with Import, Volatile, Address => System'To_Address (SDIO_Base);
 
    Card_Type : Supported_SD_Memory_Cards;
+
+   protected Prot is
+      procedure Set_Mask (Mask : Unsigned_32);
+      entry Wait_Interrupt (Interr : out Unsigned_32);
+      procedure Handler;
+      pragma Attach_Handler (Handler, Ada.Interrupts.Names.SDIO0_Interrupt);
+      pragma Interrupt_Priority (System.Interrupt_Priority'First);
+   private
+      Interr_Flag : Boolean := False;
+      Interr_Mask : Unsigned_32 := 0;
+      Interr_Val : Unsigned_32 := 0;
+   end Prot;
+
+   protected body Prot is
+      procedure Set_Mask (Mask : Unsigned_32) is
+      begin
+         Interr_Mask := Mask;
+         SDIO.IRPT_En := Mask;
+      end Set_Mask;
+
+      entry Wait_Interrupt (Interr : out Unsigned_32) when Interr_Flag is
+      begin
+         --  Collect interesting interrupts.
+         Interr := Interr_Val;
+         Interr_Val := 0;
+         Interr_Flag := False;
+      end Wait_Interrupt;
+
+      procedure Handler is
+      begin
+         Interr_Val := Interr_Val or SDIO.Interrupt;
+         SDIO.Interrupt := Interr_Val and Interr_Mask;
+         Interr_Flag := True;
+      end Handler;
+   end Prot;
 
    procedure Reset_Cmd
    is
@@ -256,7 +295,7 @@ package body MMC is
       end if;
 
       if Flag_Trace then
-         Put ("EMMC_cmd: int=");
+         Put (" emmc_int=");
          Put (Hex8 (SDIO.Interrupt));
       end if;
 
@@ -264,13 +303,18 @@ package body MMC is
       SDIO.CMDTM := Cmd_Val;
 
       --  Wait for command complete interrupt
-      loop
-         Irpts := SDIO.Interrupt;
-         exit when (Irpts and (CMD_DONE or ERR)) /= 0;
-      end loop;
+      if Use_Interrupts then
+         Prot.Set_Mask (ANY_ERR or CMD_DONE);
+         Prot.Wait_Interrupt (Irpts);
+      else
+         loop
+            Irpts := SDIO.Interrupt;
+            exit when (Irpts and (CMD_DONE or ERR)) /= 0;
+         end loop;
+         --  Clear interrupts
+         SDIO.Interrupt := 16#ffff_0001#;
+      end if;
 
-      --  Clear interrupts
-      SDIO.Interrupt := 16#ffff_0001#;
       if (Irpts and 16#ffff_0001#) /= 1 then
          Put ("EMMC_cmd: error for cmd=");
          Put (Hex2 (Unsigned_8 (Cmd.Cmd)));
@@ -286,16 +330,21 @@ package body MMC is
       end if;
 
       if Cmd.Rsp = Rsp_R1B then
-         loop
-            Irpts := SDIO.Interrupt;
-            exit when (Irpts and (DATA_DONE or ERR)) /= 0;
-         end loop;
-         if (Irpts and ERR) /= 0 then
-            Put ("CMD7: data_done error, interrupt_reg=");
+         if Use_Interrupts then
+            Prot.Set_Mask (ANY_ERR or DATA_DONE);
+            Prot.Wait_Interrupt (Irpts);
+         else
+            loop
+               Irpts := SDIO.Interrupt;
+               exit when (Irpts and (DATA_DONE or ERR)) /= 0;
+            end loop;
+            SDIO.Interrupt := ANY_ERR or DATA_DONE;
+         end if;
+         if (Irpts and ANY_ERR) /= 0 then
+            Put ("R1B: data_done error, interrupt_reg=");
             Status := Error;
             return;
          end if;
-         SDIO.Interrupt := 16#ffff_0000# or DATA_DONE;
       end if;
 
       if Flag_Trace then
@@ -390,7 +439,7 @@ package body MMC is
       Irpts : Unsigned_32;
    begin
       --  512KB DMA transfer bounds
-      SDIO.BLKSIZECNT := Nbr_Blk * 2**16 + 7 * 2**12 + Len;
+      SDIO.BLKSIZECNT := Nbr_Blk * 2**16 + Len + 7 * 2**12;
 
       if Flag_Trace then
          Put ("read_multi: nbr=");
@@ -419,24 +468,35 @@ package body MMC is
 
       --  Wait for data complete interrupt
       if Use_DMA then
-         loop
-            Irpts := SDIO.Interrupt;
-            if Flag_Trace and Irpts /= 0 then
-               Put ("IRPTS:");
-               Put_Line (Hex8 (Irpts));
-            end if;
-            exit when (Irpts and (DATA_DONE or ERR)) /= 0;
-            if (Irpts and DMA_INT) /= 0 then
-               if Flag_Trace then
-                  Put ("CTRL0:");
-                  Put (Hex8 (SDIO.Control0));
-                  Put (", DMA addr:");
-                  Put_Line (Hex8 (SDIO.SDMA_Addr));
+         if Use_Interrupts then
+            Prot.Set_Mask (ANY_ERR or DATA_DONE or DMA_INT);
+            loop
+               Prot.Wait_Interrupt (Irpts);
+               exit when (Irpts and (DATA_DONE or ERR)) /= 0;
+               if (Irpts and DMA_INT) /= 0 then
+                  SDIO.SDMA_Addr := SDIO.SDMA_Addr;
                end if;
-               SDIO.Interrupt := DMA_INT;
-               SDIO.SDMA_Addr := SDIO.SDMA_Addr;
-            end if;
-         end loop;
+            end loop;
+         else
+            loop
+               Irpts := SDIO.Interrupt;
+               if Flag_Trace and Irpts /= 0 then
+                  Put ("IRPTS:");
+                  Put_Line (Hex8 (Irpts));
+               end if;
+               exit when (Irpts and (DATA_DONE or ERR)) /= 0;
+               if (Irpts and DMA_INT) /= 0 then
+                  if Flag_Trace then
+                     Put ("CTRL0:");
+                     Put (Hex8 (SDIO.Control0));
+                     Put (", DMA addr:");
+                     Put_Line (Hex8 (SDIO.SDMA_Addr));
+                  end if;
+                  SDIO.Interrupt := DMA_INT;
+                  SDIO.SDMA_Addr := SDIO.SDMA_Addr;
+               end if;
+            end loop;
+         end if;
       else
          --  Polling
          declare
@@ -646,8 +706,8 @@ package body MMC is
       Set_Clock (This, 400_000, False);
 
       --  Enable int
-      SDIO.IRPT_Mask := 16#ffff_ffff#;
-      SDIO.IRPT_En := 16#ffff_ffff#;
+      SDIO.IRPT_Mask := ANY_ERR or 16#ffff#;
+      SDIO.IRPT_En := ANY_ERR;
 
       Status := OK;
    end Reset;
