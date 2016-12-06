@@ -3,6 +3,7 @@ with Interfaces.Cache; use Interfaces.Cache;
 with System.Storage_Elements; use System.Storage_Elements;
 with Ada.Unchecked_Conversion;
 with Ada.Text_IO; use Ada.Text_IO;
+with Ada.Real_Time; use Ada.Real_Time;
 with Hex_Images; use Hex_Images;
 with Slcr_Pkg; use Slcr_Pkg;
 
@@ -20,19 +21,25 @@ package body Eth is
    Mii_Speed_100Mb : constant := 2**13;
    Mii_Speed_1000Mb : constant := 2**6;
 
+   --  MII phy address
    Phy_Addr : constant Unsigned_32 := 2#00111#;
 
    Nbr_Tx_Bufs : constant := 8;
-   Nbr_Rx_Bufs : constant := 8;
+   subtype Rx_Buf_Range is Natural range 0 .. 7;
 
    subtype Buf_Type is Byte_Array (0 .. 1023);
    type Tx_Buf_Arr is array (1 .. Nbr_Tx_Bufs) of Buf_Type
      with Alignment => 4;
-   type Rx_Buf_Arr is array (1 .. Nbr_Rx_Bufs) of Buf_Type
+   type Rx_Buf_Arr is array (Rx_Buf_Range) of Buf_Type
      with Alignment => 4;
 
    Rx_Bufs : Rx_Buf_Arr;
-   Rx_Descs : DMA_Desc_Array (1 .. Nbr_Rx_Bufs);
+
+   --  RX descriptors (in non-cached memory).
+   Rx_Descs : DMA_Desc_Array (Rx_Buf_Range);
+   pragma Linker_Section (Rx_Descs, ".ucache");
+
+   Cur_Rx_Desc : Rx_Buf_Range;
 
    procedure Phy_Read
      (Addr : Unsigned_32; Reg : Unsigned_32; Res : out Unsigned_16)
@@ -139,7 +146,8 @@ package body Eth is
       Gem0.Dma_Cfg := (Buf_Type'Size / 64) * Ahb_Mem_Rx_Buf_Size
         + 3 * Rx_Pktbuf_Memsz_Sel + 1 * Tx_Pktbuf_Memsz_Sel
         + 1 * Csum_Gen_Offload_En + 16#10# * Ahb_Fixed_Burst_Len;
-      Dcache_Flush_By_Range (Rx_Descs'Address, Rx_Descs'Size / 8);
+      Cur_Rx_Desc := Rx_Descs'First;
+
       Dcache_Flush_By_Range (Rx_Bufs'Address, Rx_Bufs'Size / 8);
 
       --  16.3.6 Configure Interrupts
@@ -148,86 +156,112 @@ package body Eth is
       --  16.3.7 Enable the Controller.
       --  Gem0.Net_Ctrl := Gem0.Net_Ctrl or Tx_En or Rx_En;
       Gem0.Net_Ctrl := Gem0.Net_Ctrl or Rx_En;
-
-      declare
-         Cur_Rx : Natural;
-         Status : Unsigned_32;
-         Old_Status : Unsigned_32 := 0;
-         Rx_Status : Unsigned_32;
-         Old_Rx_Status : Unsigned_32 := 0;
-      begin
-         Put_Line ("Wait for frame");
-         Cur_Rx := Rx_Descs'First;
-         loop
-            loop
-               Status := Gem0.Intr_Status;
-               exit when (Status and Rx_Complete) /= 0;
-               if Status /= Old_Status then
-                  Old_Status := Status;
-                  Put ("intr status: ");
-                  Put_Line (Hex8 (Status));
-               end if;
-
-               Rx_Status := Gem0.Rx_Status;
-               if Rx_Status /= Old_Rx_Status then
-                  Old_Rx_Status := Rx_Status;
-                  Put ("rx_status: ");
-                  Put_Line (Hex8 (Rx_Status));
-               end if;
-            end loop;
-            Put ("Desc[0]: ");
-            Put (Hex8 (Rx_Descs (Cur_Rx).Addr));
-            Put (' ');
-            Put (Hex8 (Rx_Descs (Cur_Rx).Flags));
-            New_Line;
-            exit;
-         end loop;
-      end;
-
-      begin
-         Put_Line ("SLCR:");
-         Put ("Lock: ");
-         Put_Line (Hex8 (SLCR.SCL));
-         Put ("gem0_clk_ctrl: ");
-         Put_Line (Hex8 (SLCR.Gem0_Clk_Ctrl));
-         Put ("gem0_rclk_ctrl: ");
-         Put_Line (Hex8 (SLCR.Gem0_Rclk_Ctrl));
-         Put ("gem_rst_ctrl: ");
-         Put_Line (Hex8 (SLCR.Gem_Rst_Ctrl));
-         Put ("mio_pin_16 @ ");
-         Put (Hex8 (To_Unsigned_32 (SLCR.Mio_Pin_16'Address)));
-         Put (": ");
-         Put_Line (Hex8 (SLCR.Mio_Pin_16));
-
-         Put ("mio_pin_22: ");
-         Put_Line (Hex8 (SLCR.Mio_Pin_22));
-
-         Put ("mio_pin_52: ");
-         Put (Hex8 (SLCR.Mio_Pin_52));
-         Put (", 53: ");
-         Put_Line (Hex8 (SLCR.Mio_Pin_53));
-
-         Put ("gpiob: ");
-         Put_Line (Hex8 (SLCR.Gpiob_Ctrl));
-
-         Put ("net_status @ ");
-         Put (Hex8 (To_Unsigned_32 (Gem0.Net_Status'Address)));
-         Put (": ");
-         Put_Line (Hex8 (Gem0.Net_Status));
-         Put ("net_cfg: ");
-         Put_Line (Hex8 (Gem0.Net_Cfg));
-      end;
-
-      declare
-         Val : Unsigned_16;
-      begin
-         Put ("MII: ");
-         for I in Unsigned_32 range 0 .. 15 loop
-            Phy_Read (2#00111#, I, Val);
-            Put (' ');
-            Put (Hex4 (Val));
-         end loop;
-         New_Line;
-      end;
    end Init;
+
+   procedure Wait_Packet
+   is
+      use Gem_Bits;
+      use Gem_Desc_Bits;
+
+      Status : Unsigned_32;
+      Old_Status : Unsigned_32 := 0;
+      Rx_Status : Unsigned_32;
+      Old_Rx_Status : Unsigned_32 := 0;
+   begin
+      loop
+         --  Buffer ready for user.
+         exit when (Rx_Descs (Cur_Rx_Desc).Addr and Addr_Owner) /= 0;
+
+         --  Clear interrupts
+         Gem0.Intr_Status := Rx_Complete;
+         Gem0.Rx_Status := Frame_Recd;
+
+         --  Check for race condition.
+         exit when (Rx_Descs (Cur_Rx_Desc).Addr and Addr_Owner) /= 0;
+
+         --  Wait for rx_complete
+         loop
+            Status := Gem0.Intr_Status;
+            exit when (Status and Rx_Complete) /= 0;
+         end loop;
+         Rx_Status := Gem0.Rx_Status;
+         Put ("rx_status: ");
+         Put_Line (Hex8 (Rx_Status));
+      end loop;
+
+      Put ("Desc[");
+      Put (Hex2 (Unsigned_8 (Cur_Rx_Desc)));
+      Put ("]: ");
+      Put (Hex8 (Rx_Descs (Cur_Rx_Desc).Addr));
+      Put (' ');
+      Put (Hex8 (Rx_Descs (Cur_Rx_Desc).Flags));
+      for J in 0 .. 15 loop
+         Put (' ');
+         Put (Hex2 (Rx_Bufs (Cur_Rx_Desc)(J)));
+      end loop;
+      New_Line;
+
+      Dcache_Flush_By_Range (Rx_Bufs (Cur_Rx_Desc)'Address,
+                             Rx_Bufs (Cur_Rx_Desc)'Size / 8);
+
+      declare
+         Buf_Addr : constant Unsigned_32 :=
+           To_Unsigned_32 (Rx_Bufs (Cur_Rx_Desc)'Address);
+      begin
+         if Cur_Rx_Desc = Rx_Descs'Last then
+            Rx_Descs (Cur_Rx_Desc).Addr := Buf_Addr or Addr_Wrap;
+            Cur_Rx_Desc := Rx_Descs'First;
+         else
+            Rx_Descs (Cur_Rx_Desc).Addr := Buf_Addr;
+            Cur_Rx_Desc := Cur_Rx_Desc + 1;
+         end if;
+      end;
+   end Wait_Packet;
+
+   procedure Dump_Regs is
+   begin
+      Put_Line ("SLCR:");
+      Put ("Lock: ");
+      Put_Line (Hex8 (SLCR.SCL));
+      Put ("gem0_clk_ctrl: ");
+      Put_Line (Hex8 (SLCR.Gem0_Clk_Ctrl));
+      Put ("gem0_rclk_ctrl: ");
+      Put_Line (Hex8 (SLCR.Gem0_Rclk_Ctrl));
+      Put ("gem_rst_ctrl: ");
+      Put_Line (Hex8 (SLCR.Gem_Rst_Ctrl));
+      Put ("mio_pin_16 @ ");
+      Put (Hex8 (To_Unsigned_32 (SLCR.Mio_Pin_16'Address)));
+      Put (": ");
+      Put_Line (Hex8 (SLCR.Mio_Pin_16));
+
+      Put ("mio_pin_22: ");
+      Put_Line (Hex8 (SLCR.Mio_Pin_22));
+
+      Put ("mio_pin_52: ");
+      Put (Hex8 (SLCR.Mio_Pin_52));
+      Put (", 53: ");
+      Put_Line (Hex8 (SLCR.Mio_Pin_53));
+
+      Put ("gpiob: ");
+      Put_Line (Hex8 (SLCR.Gpiob_Ctrl));
+
+      Put ("net_status @ ");
+      Put (Hex8 (To_Unsigned_32 (Gem0.Net_Status'Address)));
+      Put (": ");
+      Put_Line (Hex8 (Gem0.Net_Status));
+      Put ("net_cfg: ");
+      Put_Line (Hex8 (Gem0.Net_Cfg));
+   end Dump_Regs;
+
+   procedure Dump_Mii is
+      Val : Unsigned_16;
+   begin
+      Put ("MII: ");
+      for I in Unsigned_32 range 0 .. 15 loop
+         Phy_Read (2#00111#, I, Val);
+         Put (' ');
+         Put (Hex4 (Val));
+      end loop;
+      New_Line;
+   end Dump_Mii;
 end Eth;

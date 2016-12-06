@@ -253,6 +253,9 @@ package Eth is
       Tx_Used_Read : constant := 2**2;
       Rx_Complete : constant := 2**1;
       Mgmt_Done : constant := 2**0;
+
+      --  RX status
+      Frame_Recd : constant := 2**1;
    end Gem_Bits;
 
    Gem0 : GEM_Registers_Type
@@ -300,4 +303,7 @@ package Eth is
    end Gem_Desc_Bits;
 
    procedure Init;
+
+   procedure Wait_Packet;
+
 end Eth;

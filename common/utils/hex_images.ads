@@ -9,6 +9,13 @@ package Hex_Images is
    function Hex2 (V : Byte) return Byte_Image_Pkg.Fixed_String
      renames Byte_Image_Pkg.Hex;
 
+   --  Hex4
+
+   package UInt16_Image_Pkg is new Images_Gen (4, UInt16);
+
+   function Hex4 (V : UInt16) return UInt16_Image_Pkg.Fixed_String
+     renames UInt16_Image_Pkg.Hex;
+
    --  Hex8
 
    package UInt32_Image_Pkg is new Images_Gen (8, UInt32);
