@@ -36,7 +36,7 @@ with Cortex_M.FPU;  use Cortex_M.FPU;
 
 package body Wav_Reader is
 
-   subtype Buffer_Type is Audio_Buffer (1 .. 4 * 1024);
+   subtype Buffer_Type is Audio_Buffer (1 .. 1 * 1024);
    Buffer          : aliased Buffer_Type := (others => 0);
    First_Byte_Left : Boolean := True;
 

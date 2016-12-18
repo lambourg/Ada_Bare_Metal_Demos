@@ -26,16 +26,19 @@ with Interfaces;                 use Interfaces;
 
 with HAL.Bitmap;                 use HAL.Bitmap;
 with HAL.Framebuffer;            use HAL.Framebuffer;
+with HAL.SDCard;                 use HAL.SDCard;
 with Bitmapped_Drawing;          use Bitmapped_Drawing;
 
 with Cortex_M.Cache;             use Cortex_M.Cache;
-with STM32.SDMMC;                use STM32.SDMMC;
 with STM32.Board;                use STM32.Board;
 
 with BMP_Fonts;
 
 with Filesystem;                 use Filesystem;
 with Filesystem.VFS;             use Filesystem.VFS;
+
+with Ada.Real_Time;              use Ada.Real_Time;
+with Test_Support;               use Test_Support;
 
 procedure SDCard_Demo
 is
@@ -62,7 +65,16 @@ is
       E      : Node_Access;
       Status : Status_Code;
    begin
+      if Error_State then
+         return;
+      end if;
+
+      if Y > Display.Get_Height then
+         return;
+      end if;
+
       Dir := Open (Path, Status);
+
       if Status /= OK then
          Draw_String
            (Display.Get_Hidden_Buffer (1),
@@ -169,6 +181,63 @@ begin
                Capacity := Capacity / 1000;
             end if;
          end loop;
+
+         --  Test read speed of the card (ideal case: contiguous blocks)
+         declare
+            Block : Unsigned_64 := 0;
+            Start : constant Time := Clock;
+            Fail  : Boolean := False;
+         begin
+
+            for J in 1 .. 100 loop
+               if not SDCard_Device.Read
+                 (Block_Number => Block,
+                  Data         => Test_Block)
+               then
+                  Fail := True;
+                  exit;
+               end if;
+
+               Block := Block + Test_Block'Length / 512;
+            end loop;
+
+            declare
+               Elapsed    : constant Time_Span := Clock - Start;
+               --  Time needed to read data
+
+               Norm       : constant Time_Span :=
+                              (Elapsed * 10000) / Test_Block'Length;
+               --  Extrapolate to 1 MB read
+
+               Rate_MB_ds : constant Integer := Seconds (10) / Norm;
+               --  Bandwidth in MByte / 1/10s second
+               Img        : String := Rate_MB_ds'Img;
+
+            begin
+               if not Fail then
+                  Img (Img'First .. Img'Last - 2) := Img (Img'First + 1 .. Img'Last - 1);
+                  Img (Img'Last - 1) := '.';
+                  Draw_String
+                    (Display.Get_Hidden_Buffer (1),
+                     (0, Y),
+                     "Read (in MB/s): " & Img,
+                     BMP_Fonts.Font12x12,
+                     HAL.Bitmap.Black,
+                     Transparent);
+               else
+                  Draw_String
+                    (Display.Get_Hidden_Buffer (1),
+                     (0, Y),
+                     "*** test failure ***",
+                     BMP_Fonts.Font12x12,
+                     HAL.Bitmap.Red,
+                     Transparent);
+               end if;
+            end;
+
+            Display.Update_Layer (1, True);
+            Y := Y + 13;
+         end;
 
          Status := Mount_Drive ("sdcard", SDCard_Device'Access);
 

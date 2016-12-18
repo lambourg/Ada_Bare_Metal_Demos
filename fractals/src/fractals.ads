@@ -1,6 +1,6 @@
-package Fractals is
+with Float_Support; use Float_Support;
 
-   subtype Base_Float is Float;
+package Fractals is
 
    type Coordinate is record
       X : Base_Float;

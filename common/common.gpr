@@ -1,4 +1,4 @@
-with "../drivers/boards/common_config";
+with "../drivers/hal/config";
 
 project Common is
 
@@ -6,22 +6,12 @@ project Common is
       ("RAM", "ROM");
    LOADER : LOADER_Type := external ("LOADER", "ROM");
 
-   type RTS_Type is ("ravenscar-sfp", "ravenscar-full");
-   RTS : RTS_Type := External ("RTS", "ravenscar-sfp");
-
    for Languages use ("Ada");
    for Target use "arm-eabi";
    for Source_Dirs use ("gui");
 
-   case RTS is
-      when "ravenscar-sfp" =>
-         for Source_Dirs use Project'Source_Dirs & ("lch_sfp");
-      when "ravenscar-full" =>
-         for Source_Dirs use Project'Source_Dirs & ("lch_full");
-   end case;
-
-   package Compiler renames Common_Config.Compiler;
-   package Builder renames Common_Config.Builder;
+   package Compiler renames Config.Compiler;
+   package Builder renames Config.Builder;
 
    package Linker is
       for Default_Switches ("Ada") use

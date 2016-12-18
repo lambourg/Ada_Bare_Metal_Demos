@@ -1,12 +1,8 @@
-with "../drivers/boards/stm32f429_discovery.gpr";
+with "../drivers/boards/stm32f429disco_full.gpr";
 
 project Demo_2048_STM32F429Disco extends "../common/common.gpr" is
 
-   --  Requires ravenscar-full
-   type RTS_Profile_Type is ("ravenscar-full");
-   RTS   : RTS_Profile_Type := external ("RTS", "ravenscar-full");
-
-   for Runtime ("Ada") use STM32F429_Discovery'Runtime("Ada");
+   for Runtime ("Ada") use STM32F429Disco_Full'Runtime("Ada");
    for Object_Dir use "obj/stm32f429disco";
 
    for Main use ("demo_2048.adb");

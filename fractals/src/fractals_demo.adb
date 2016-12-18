@@ -9,7 +9,8 @@ with HAL.Touch_Panel;
 with Bitmapped_Drawing;
 with BMP_Fonts;
 
-with Fractals; use Fractals;
+with Fractals;      use Fractals;
+with Float_Support; use Float_Support;
 
 procedure Fractals_Demo
 is

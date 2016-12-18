@@ -135,7 +135,7 @@ procedure Player is
 
    procedure Display_Volume (Vol : Wav_Reader.Volume_Level)
    is
-      W      : constant Natural := Display.Get_Width - 20;
+      W      : constant Natural := Display.Get_Width - 40;
       Tmp_L  : Float;
       Tmp_R  : Float;
       Dt     : Float;
@@ -181,7 +181,7 @@ procedure Player is
 
       Display.Get_Hidden_Buffer (1).Fill_Rect
         (Transparent,
-         X      => 10,
+         X      => 20,
          Y      => Display.Get_Height - 35,
          Width  => W,
          Height => 25);
@@ -204,7 +204,7 @@ procedure Player is
       Y      : Natural;
       W      : Natural)
    is
-      Steps  : constant := 20;
+      Steps  : constant := 40;
       Step_W : constant Natural := W / Steps;
       Color  : Bitmap_Color;
    begin
@@ -231,12 +231,12 @@ begin
    Cortex_M.Cache.Disable_D_Cache;
    STM32.Button.Initialize;
    STM32.SDRAM.Initialize;
-   Display.Initialize (Portrait, Interrupt);
+   Display.Initialize (Landscape, Interrupt);
    Display.Initialize_Layer (1, ARGB_8888);
    Display.Set_Background (255, 255, 255);
 
    SDCard_Device.Initialize;
-   Wav_Reader.Initialize (Volume => 60);
+   Wav_Reader.Initialize (Volume => 80);
 
    loop
       if not SDCard_Device.Card_Present then

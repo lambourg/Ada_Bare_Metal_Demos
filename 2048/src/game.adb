@@ -22,10 +22,10 @@
 ------------------------------------------------------------------------------
 
 with Interfaces;           use Interfaces;
-with Interfaces.Bit_Types; use Interfaces.Bit_Types;
 
 with Cortex_M.Cache;       use Cortex_M.Cache;
 
+with HAL;                  use HAL;
 with STM32.RNG;
 with STM32.Board;          use STM32.Board;
 with STM32.SDRAM;          use STM32.SDRAM;
@@ -114,20 +114,20 @@ package body Game is
       --  Up_Margin    := 0;
 
       Background_Buffer :=
-        (Addr       => Reserve (Word (Screen_Size * Screen_Size * Pixel_Size)),
+        (Addr       => Reserve (UInt32 (Screen_Size * Screen_Size * Pixel_Size)),
          Color_Mode => CM,
          Width      => Screen_Size,
          Height     => Screen_Size,
          Swapped    => Display.Is_Swapped);
       Background_Slide_Buffer :=
-        (Addr       => Reserve (Word (Screen_Size * Screen_Size * Pixel_Size)),
+        (Addr       => Reserve (UInt32 (Screen_Size * Screen_Size * Pixel_Size)),
          Color_Mode => CM,
          Width      => Screen_Size,
          Height     => Screen_Size,
          Swapped    => Display.Is_Swapped);
       Cells_Buffer :=
         (Addr       =>
-           Reserve (Word (Cell_Size * Cell_Size * 16 * Pixel_Size)),
+           Reserve (UInt32 (Cell_Size * Cell_Size * 16 * Pixel_Size)),
          Color_Mode => CM,
          Width      => Cell_Size,
          Height     => Cell_Size * 16,
@@ -364,7 +364,7 @@ package body Game is
    ---------------
 
    procedure Add_Value is
-      Rand_Pos : Word := STM32.RNG.RNG_Data;
+      Rand_Pos : UInt32 := STM32.RNG.RNG_Data;
       N_Free   : Natural := 0;
       Val      : constant Natural :=
                    (if STM32.RNG.RNG_Data mod 10 = 0 then 2 else 1);
@@ -377,7 +377,7 @@ package body Game is
          end loop;
       end loop;
 
-      Rand_Pos := Rand_Pos mod Word (N_Free);
+      Rand_Pos := Rand_Pos mod UInt32 (N_Free);
       N_Free := 0;
       Main_Loop :
       for X in Size loop
