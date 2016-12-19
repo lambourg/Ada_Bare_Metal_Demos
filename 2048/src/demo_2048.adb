@@ -32,7 +32,7 @@ with Ada.Real_Time;         use Ada.Real_Time;
 with Ada.Text_IO;
 
 with STM32.Board;           use STM32.Board;
-with STM32.Button;          use STM32;
+with STM32.User_Button;     use STM32.User_Button;
 with STM32.SDRAM;           use STM32.SDRAM;
 
 with HAL.Bitmap;            use HAL.Bitmap;
@@ -98,7 +98,7 @@ begin
 
    Display.Set_Background (240, 240, 240);
 
-   STM32.Button.Initialize;
+   STM32.User_Button.Initialize;
 
    Game.Init;
    Game.Start;
@@ -138,7 +138,7 @@ begin
          end loop;
       end if;
 
-      if Button.Has_Been_Pressed then
+      if STM32.User_Button.Has_Been_Pressed then
          On_Autoplay_Clicked (0, 0);
       end if;
 

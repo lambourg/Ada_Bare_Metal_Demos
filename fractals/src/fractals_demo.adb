@@ -1,6 +1,6 @@
-with STM32.Board;  use STM32.Board;
-with STM32.Button; use STM32.Button;
-with Cortex_M.FPU; use Cortex_M.FPU;
+with STM32.Board;       use STM32.Board;
+with STM32.User_Button; use STM32.User_Button;
+with Cortex_M.FPU;      use Cortex_M.FPU;
 
 with HAL.Framebuffer;
 with HAL.Bitmap;
@@ -218,7 +218,7 @@ begin
    Display.Initialize_Layer (1, HAL.Bitmap.RGB_888);
    Display.Initialize_Layer (2, HAL.Bitmap.ARGB_4444);
    Touch_Panel.Initialize (HAL.Framebuffer.Landscape);
-   STM32.Button.Initialize;
+   STM32.User_Button.Initialize;
 
    Initialize_Color_Map;
 
@@ -321,7 +321,7 @@ begin
 
                   Display.Update_Layer (1, True);
 
-                  if STM32.Button.Has_Been_Pressed then
+                  if STM32.User_Button.Has_Been_Pressed then
                      exit Same_Fractal_Loop;
                   end if;
                end loop;
@@ -364,7 +364,7 @@ begin
                end if;
             end;
 
-            if STM32.Button.Has_Been_Pressed then
+            if STM32.User_Button.Has_Been_Pressed then
                exit Same_Fractal_Loop;
             end if;
          end loop Zoom_Loop;

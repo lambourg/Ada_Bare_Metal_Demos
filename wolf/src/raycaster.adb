@@ -29,7 +29,7 @@ with Interfaces;                        use Interfaces;
 
 with Cortex_M.Cache;
 
-with STM32.Button;
+with STM32.User_Button;
 with STM32.DMA2D_Bitmap;                use STM32.DMA2D_Bitmap;
 
 with HAL.Bitmap;                        use HAL.Bitmap;
@@ -551,8 +551,8 @@ package body Raycaster is
          Display.Update_Layer (1);
       end if;
 
-      if STM32.Button.Has_Been_Pressed then
-         while not STM32.Button.Has_Been_Pressed loop
+      if STM32.User_Button.Has_Been_Pressed then
+         while not STM32.User_Button.Has_Been_Pressed loop
             null;
          end loop;
       end if;

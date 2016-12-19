@@ -29,7 +29,7 @@ with Ada.Real_Time;         use Ada.Real_Time;
 
 with Cortex_M.FPU;
 
-with STM32.Button;
+with STM32.User_Button;
 with STM32.Board;           use STM32.Board;
 with STM32.SDRAM;
 with HAL.Framebuffer;       use HAL.Framebuffer;
@@ -170,7 +170,7 @@ is
 
 begin
    STM32.SDRAM.Initialize;
-   STM32.Button.Initialize;
+   STM32.User_Button.Initialize;
    Display.Initialize (HAL.Framebuffer.Landscape, HAL.Framebuffer.Polling);
    Display.Initialize_Layer
      (Layer  => 1,

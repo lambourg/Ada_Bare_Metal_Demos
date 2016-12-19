@@ -26,7 +26,7 @@ with Interfaces;               use Interfaces;
 with HAL;                      use HAL;
 with System;                   use System;
 
-with STM32.Button;             use STM32.Button;
+with STM32.User_Button;        use STM32.User_Button;
 with STM32.Board;              use STM32.Board;
 with STM32.RNG.Interrupts;     use STM32.RNG.Interrupts;
 with STM32.SDRAM;
@@ -450,7 +450,7 @@ package body Conway_Driver is
       Initialize_RNG;
       Display.Initialize (Orientation => Landscape);
       Display.Initialize_Layer (1, Format);
-      STM32.Button.Initialize;
+      STM32.User_Button.Initialize;
 
       G  := To_Grid (STM32.SDRAM.Reserve (Grid'Size / 8));
       G2 := To_Grid (STM32.SDRAM.Reserve (Grid'Size / 8));
@@ -470,7 +470,7 @@ package body Conway_Driver is
          loop
             Step;
 
-            exit when STM32.Button.Has_Been_Pressed;
+            exit when STM32.User_Button.Has_Been_Pressed;
          end loop;
       end loop;
    end Driver;

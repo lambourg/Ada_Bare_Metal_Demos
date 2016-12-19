@@ -32,7 +32,7 @@ with Last_Chance_Handler;  pragma Unreferenced (Last_Chance_Handler);
 
 with System;
 with Interfaces;            use Interfaces;
-with STM32.Button;          use STM32.Button;
+with STM32.User_Button;     use STM32.User_Button;
 with STM32.Board;           use STM32.Board;
 with STM32.RNG.Interrupts;  use STM32.RNG.Interrupts;
 
@@ -350,12 +350,12 @@ begin
    Display.Initialize;
    Display.Initialize_Layer (1, ARGB_1555);
    STM32.RNG.Interrupts.Initialize_RNG;
-   STM32.Button.Initialize;
+   STM32.User_Button.Initialize;
 
    Init_Balls;
 
    loop
-      if STM32.Button.Has_Been_Pressed then
+      if STM32.User_Button.Has_Been_Pressed then
          White_Background := not White_Background;
       end if;
 

@@ -30,7 +30,7 @@ with Bitmapped_Drawing;          use Bitmapped_Drawing;
 
 with Cortex_M.Cache;             use Cortex_M.Cache;
 with STM32.Board;                use STM32.Board;
-with STM32.Button;               use STM32.Button;
+with STM32.User_Button;          use STM32.User_Button;
 with STM32.SDRAM;                use STM32.SDRAM;
 
 with Hershey_Fonts.FuturaL;
@@ -229,7 +229,7 @@ procedure Player is
 
 begin
    Cortex_M.Cache.Disable_D_Cache;
-   STM32.Button.Initialize;
+   STM32.User_Button.Initialize;
    STM32.SDRAM.Initialize;
    Display.Initialize (Landscape, Interrupt);
    Display.Initialize_Layer (1, ARGB_8888);
@@ -423,7 +423,7 @@ begin
                               loop
                                  Now := Clock;
                                  exit when not Is_Playing;
-                                 exit when STM32.Button.Has_Been_Pressed;
+                                 exit when STM32.User_Button.Has_Been_Pressed;
                                  exit when not SDCard_Device.Card_Present;
 
                                  Display_Volume (Current_Volume);
