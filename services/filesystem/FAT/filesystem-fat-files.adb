@@ -499,7 +499,6 @@ package body Filesystem.FAT.Files is
          Inc_Size (Data_Length);
       end if;
 
-
       return OK;
    end Write;
 

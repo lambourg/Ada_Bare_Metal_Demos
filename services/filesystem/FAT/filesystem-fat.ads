@@ -117,7 +117,7 @@ package Filesystem.FAT is
    --------------------
 
    overriding function Open
-     (Controller  : HAL.Block_Drivers.Block_Driver_Ref;
+     (Controller  : HAL.Block_Drivers.Any_Block_Driver;
       LBA         : Block_Number;
       FS          : not null access FAT_Filesystem) return Status_Code;
    --  Opens a FAT partition at the given LBA
@@ -284,7 +284,7 @@ private
       Initialized     : Boolean := False;
       Disk_Parameters : FAT_Disk_Parameter;
       LBA             : Block_Number;
-      Controller      : Block_Driver_Ref;
+      Controller      : Any_Block_Driver;
       FSInfo          : FAT_FS_Info;
       FSInfo_Changed  : Boolean := False;
       Root_Dir_Area   : Block_Offset := 0;

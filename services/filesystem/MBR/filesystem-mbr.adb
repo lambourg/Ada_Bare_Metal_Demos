@@ -30,7 +30,7 @@ package body Filesystem.MBR is
    ----------
 
    function Read
-     (Controller  : HAL.Block_Drivers.Block_Driver_Ref;
+     (Controller  : HAL.Block_Drivers.Any_Block_Driver;
       MBR         : out Master_Boot_Record) return Status_Code
    is
       Tmp  : aliased Master_Boot_Record;
@@ -55,7 +55,7 @@ package body Filesystem.MBR is
    -------------------
 
    function Read_Extended
-     (Controller  : HAL.Block_Drivers.Block_Driver_Ref;
+     (Controller  : HAL.Block_Drivers.Any_Block_Driver;
       MBR         : Master_Boot_Record;
       P           : Partition_Number;
       EBR         : out Extended_Boot_Record) return Status_Code
@@ -167,7 +167,7 @@ package body Filesystem.MBR is
    ---------------
 
    function Read_Next
-     (Controller : HAL.Block_Drivers.Block_Driver_Ref;
+     (Controller : HAL.Block_Drivers.Any_Block_Driver;
       EBR        : in out Extended_Boot_Record) return Status_Code
    is
       BA   : constant Block_Number := Block_Number (EBR.P_Entries (2).LBA);

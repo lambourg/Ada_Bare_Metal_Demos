@@ -34,7 +34,7 @@ package Filesystem.MBR is
    type Partition_Type is new Interfaces.Unsigned_8;
 
    function Read
-     (Controller  : HAL.Block_Drivers.Block_Driver_Ref;
+     (Controller  : HAL.Block_Drivers.Any_Block_Driver;
       MBR         : out Master_Boot_Record) return Status_Code;
 
    function Active  (MBR : Master_Boot_Record;
@@ -53,7 +53,7 @@ package Filesystem.MBR is
       P   : Partition_Number) return Boolean;
 
    function Read_Extended
-     (Controller  : HAL.Block_Drivers.Block_Driver_Ref;
+     (Controller  : HAL.Block_Drivers.Any_Block_Driver;
       MBR         : Master_Boot_Record;
       P           : Partition_Number;
       EBR         : out Extended_Boot_Record) return Status_Code;
@@ -65,7 +65,7 @@ package Filesystem.MBR is
    function Has_Next (EBR : Extended_Boot_Record) return Boolean;
 
    function Read_Next
-     (Controller : HAL.Block_Drivers.Block_Driver_Ref;
+     (Controller : HAL.Block_Drivers.Any_Block_Driver;
       EBR        : in out Extended_Boot_Record) return Status_Code;
 
 private

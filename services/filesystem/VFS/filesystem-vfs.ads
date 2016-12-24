@@ -38,7 +38,7 @@ package Filesystem.VFS is
 
    function Mount_Drive
      (Mount_Point : Mount_Path;
-      Device      : HAL.Block_Drivers.Block_Driver_Ref) return Status_Code;
+      Device      : HAL.Block_Drivers.Any_Block_Driver) return Status_Code;
 
    function Unmount (Mount_Point : Mount_Path) return Status_Code;
 

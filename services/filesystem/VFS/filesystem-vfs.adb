@@ -136,7 +136,7 @@ package body Filesystem.VFS is
 
    function Mount_Drive
      (Mount_Point : Mount_Path;
-      Device      : HAL.Block_Drivers.Block_Driver_Ref)
+      Device      : HAL.Block_Drivers.Any_Block_Driver)
       return Status_Code
    is
       MBR    : Master_Boot_Record;

@@ -352,7 +352,7 @@ package body Filesystem.FAT is
    ----------
 
    overriding function Open
-     (Controller  : HAL.Block_Drivers.Block_Driver_Ref;
+     (Controller  : HAL.Block_Drivers.Any_Block_Driver;
       LBA         : Block_Number;
       FS          : not null access FAT_Filesystem) return Status_Code
    is

@@ -214,7 +214,7 @@ package Filesystem is
    -------------------
 
    function Open
-     (Controller : HAL.Block_Drivers.Block_Driver_Ref;
+     (Controller : HAL.Block_Drivers.Any_Block_Driver;
       LBA        : Block_Number;
       FS         : not null access Filesystem) return Status_Code is abstract;
    --  Open the FS partition located at the specified LBA.

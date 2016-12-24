@@ -409,8 +409,9 @@ package body Filesystem.FAT.Directories is
                CRC := V_Entry.Checksum;
             end if;
 
-         elsif not D_Entry.Attributes.Volume_Label --  Ignore Volumes
-           and then Character'Pos (D_Entry.Filename (1)) /= 16#E5# --  Ignore deleted files
+         --  Ignore Volumes and deleted files
+         elsif not D_Entry.Attributes.Volume_Label
+           and then Character'Pos (D_Entry.Filename (1)) /= 16#E5#
          then
             if L_Name_First not in L_Name'Range then
                Matches := False;
@@ -964,7 +965,6 @@ package body Filesystem.FAT.Directories is
             elsif Is_Legal_Character (Name.Name (J)) then
                S_Idx := S_Idx + 1;
                SName (S_Idx) := Name.Name (J);
-
 
             elsif Name.Name (J) = '.'
               or else Name.Name (J) = ' '
