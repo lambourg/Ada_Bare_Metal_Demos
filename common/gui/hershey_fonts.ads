@@ -33,6 +33,8 @@ package Hershey_Fonts is
 
    type Glyph_Index is private;
 
+   function Valid_Glyph (Val : Natural) return Boolean;
+
    function Read (Fnt : Font_Desc) return Hershey_Font;
    procedure Read (Fnt : Font_Desc;
                    Ret : out Hershey_Font);
@@ -73,6 +75,9 @@ private
    end record with Pack;
 
    type Glyph_Index is new Positive range 1 .. 96;
+
+   function Valid_Glyph (Val : Natural) return Boolean
+   is (Val in 1 .. 96);
 
    type Glyph_Array is array (Glyph_Index) of Glyph;
 

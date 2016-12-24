@@ -34,6 +34,28 @@ package body Bitmapped_Drawing is
       Start      : Point;
       Char       : Character;
       Font       : BMP_Font;
+      Foreground : Unsigned_32)
+   is
+   begin
+      for H in 0 .. Char_Height (Font) - 1 loop
+         for W in 0 .. Char_Width (Font) - 1 loop
+            if (Data (Font, Char, H) and Mask (Font, W)) /= 0 then
+               Buffer.Set_Pixel
+                 (Start.X + W, Start.Y + H, Foreground);
+            end if;
+         end loop;
+      end loop;
+   end Draw_Char;
+
+   ---------------
+   -- Draw_Char --
+   ---------------
+
+   procedure Draw_Char
+     (Buffer     : Bitmap_Buffer'Class;
+      Start      : Point;
+      Char       : Character;
+      Font       : BMP_Font;
       Foreground : Unsigned_32;
       Background : Unsigned_32)
    is
@@ -50,6 +72,33 @@ package body Bitmapped_Drawing is
          end loop;
       end loop;
    end Draw_Char;
+
+   -----------------
+   -- Draw_String --
+   -----------------
+
+   procedure Draw_String
+     (Buffer     : Bitmap_Buffer'Class;
+      Start      : Point;
+      Msg        : String;
+      Font       : BMP_Font;
+      Foreground : Bitmap_Color)
+   is
+      Count : Natural := 0;
+      FG    : constant Unsigned_32 := Bitmap_Color_To_Word (Buffer.Color_Mode,
+                                                            Foreground);
+   begin
+      for C of Msg loop
+         exit when Start.X + Count * Char_Width (Font) > Buffer.Width;
+         Draw_Char
+           (Buffer,
+            (Start.X + Count * Char_Width (Font), Start.Y),
+            C,
+            Font,
+            FG);
+         Count := Count + 1;
+      end loop;
+   end Draw_String;
 
    -----------------
    -- Draw_String --
@@ -172,7 +221,7 @@ package body Bitmapped_Drawing is
                      Area.Position.Y + Y0),
                     (Area.Position.X + Natural (Float (X1) * Ratio),
                      Area.Position.Y + Y1),
-                    Foreground,
+                    FG,
                     Width,
                     Fast);
       end Internal_Draw_Line;

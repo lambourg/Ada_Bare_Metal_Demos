@@ -33,8 +33,8 @@ package body Hershey_Fonts is
    is
       Ret : constant Integer := Character'Pos (C) - 31;
    begin
-      if Ret <= 0 then
-         return Glyph_Index'First;
+      if not Valid_Glyph (Ret) then
+         return Get_Glyph ('?');
       else
          return Glyph_Index (Ret);
       end if;

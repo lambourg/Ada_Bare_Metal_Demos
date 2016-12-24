@@ -120,8 +120,22 @@ package Bitmapped_Drawing is
       Start      : Point;
       Char       : Character;
       Font       : BMP_Font;
+      Foreground : Unsigned_32);
+
+   procedure Draw_Char
+     (Buffer     : Bitmap_Buffer'Class;
+      Start      : Point;
+      Char       : Character;
+      Font       : BMP_Font;
       Foreground : Unsigned_32;
       Background : Unsigned_32);
+
+   procedure Draw_String
+     (Buffer     : Bitmap_Buffer'Class;
+      Start      : Point;
+      Msg        : String;
+      Font       : BMP_Font;
+      Foreground : Bitmap_Color);
 
    procedure Draw_String
      (Buffer     : Bitmap_Buffer'Class;
