@@ -27,7 +27,7 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with HAL; use Hal;
+with HAL; use HAL;
 with HAL.SDCard; use HAL.SDCard;
 
 pragma Warnings (Off);
@@ -41,7 +41,7 @@ with Ada.Unchecked_Conversion;
 with Ada.Real_Time; use Ada.Real_Time;
 with Ada.Text_IO; use Ada.Text_IO;
 
-package body Mmc is
+package body MMC is
 
    Flag_Trace : constant Boolean := False;
 
@@ -109,7 +109,7 @@ package body Mmc is
            | Rsp_R7 =>
             --  CRC, IXCHK, 48 bits
             Cmd_Val := Cmd_Val or 16#1a_0000#;
-         when Rsp_R1b =>
+         when Rsp_R1B =>
             --  CRC, IXCHK, 48 bits with busy
             Cmd_Val := Cmd_Val or 16#1b_0000#;
          when Rsp_R2 =>
@@ -158,7 +158,7 @@ package body Mmc is
          Status := Error;
       end if;
 
-      if Cmd.Rsp = Rsp_R1b then
+      if Cmd.Rsp = Rsp_R1B then
          loop
             Irpts := EMMC.Interrupt;
             exit when (Irpts and (DATA_DONE or ERR)) /= 0;
@@ -219,7 +219,7 @@ package body Mmc is
       end if;
 
       Send_Cmd (This, Cmd, Arg, Status);
-      if Status /= Ok then
+      if Status /= OK then
          return;
       end if;
 
@@ -457,4 +457,4 @@ package body Mmc is
          Card_Type := Info.Card_Type;
       end if;
    end Initialize;
-end Mmc;
+end MMC;

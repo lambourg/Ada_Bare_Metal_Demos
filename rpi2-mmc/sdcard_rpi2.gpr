@@ -3,6 +3,14 @@ project SDCard_RPI2 is
    type Boards is ("RPI2", "ZYNQ");
    Board : Boards := external ("BOARD", "RPI2");
 
+   for Target use "arm-eabi";
+   case Board is
+      when "ZYNQ" =>
+         for Runtime ("Ada") use "ravenscar-sfp-zynq7000";
+      when "RPI2" =>
+         for Runtime ("Ada") use "ravenscar-sfp-rpi2";
+   end case;
+
    for Object_Dir use "obj";
 
    for Main use ("sdcard_demo.adb");
