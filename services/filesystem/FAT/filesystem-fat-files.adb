@@ -21,6 +21,7 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
+with Ada.Unchecked_Conversion;
 with Filesystem.FAT.Directories;
 
 package body Filesystem.FAT.Files is
@@ -33,8 +34,7 @@ package body Filesystem.FAT.Files is
 
    function Next_Block
      (File : access FAT_File_Handle;
-      Inc  : Positive := 1) return Status_Code
-     with Inline_Always;
+      Inc  : Positive := 1) return Status_Code;
 
    --------------------
    -- Absolute_Block --
@@ -122,7 +122,10 @@ package body Filesystem.FAT.Files is
             File.Current_Block   := 0;
             Next := File.FS.Get_FAT (File.Current_Cluster);
 
-            if not File.FS.Is_Last_Cluster (Next) then
+            if Next < 2 then
+               return Internal_Error;
+
+            elsif not File.FS.Is_Last_Cluster (Next) then
                --  Nominal case: there's a next cluster
                File.Current_Cluster := Next;
 
@@ -207,8 +210,13 @@ package body Filesystem.FAT.Files is
       Addr   : System.Address;
       Length : in out FAT_File_Size) return Status_Code
    is
+      function To_U32 is new Ada.Unchecked_Conversion
+        (System.Address, Unsigned_32);
+
       Data        : File_Data (1 .. Length) with Import, Address => Addr;
       --  Byte array representation of the buffer to read
+
+      Addr_Int    : constant Unsigned_32 := To_U32 (Addr);
 
       Idx         : FAT_File_Size;
       --  Index from the current block
@@ -264,7 +272,7 @@ package body Filesystem.FAT.Files is
             --  we have at least one block to read.
 
             --  Check the compatibility of the User's buffer with DMA transfers
-            if Data'Alignment mod 4 = 0 then
+            if (Addr_Int mod 4) = 0 then
                --  User data is aligned on words: we can directly perform DMA
                --  transfers to it
 
