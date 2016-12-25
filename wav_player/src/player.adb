@@ -25,15 +25,15 @@ with Ada.Unchecked_Conversion;
 
 with GUI;
 
-with Cortex_M.Cache;
 with HAL.Bitmap;                 use HAL.Bitmap;
 with HAL.Framebuffer;            use HAL.Framebuffer;
 
+with Cortex_M.Cache;
 with STM32.Board;                use STM32.Board;
 with STM32.SDRAM;                use STM32.SDRAM;
 
 with Filesystem;                 use Filesystem;
-with Wav_Reader;
+with Wav_Player;
 
 procedure Player is
 
@@ -161,7 +161,7 @@ begin
    GUI.Initialize;
 
    SDCard_Device.Initialize;
-   Wav_Reader.Initialize (Volume => 80);
+   Wav_Player.Initialize (Volume => 80);
 
    GUI.Main_Loop;
 end Player;

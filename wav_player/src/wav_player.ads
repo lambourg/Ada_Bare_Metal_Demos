@@ -21,60 +21,40 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Interfaces; use Interfaces;
+with HAL.Audio;
 
-with Filesystem;
+with Wav_DB;
 
-package Wav_Reader is
+package Wav_Player is
 
-   type WAV_Status_Code is
-     (OK,
-      Not_A_WAV_File,
-      Internal_Error,
-      Wrong_WAV_Format,
-      Unexpected_Section,
-      Cannot_Read);
-
-   type Header_Block is record
-      ID   : String (1 .. 4);
-      Size : Unsigned_32;
-   end record with Pack;
-
-   type RIFF_Block is record
-      Format_ID : String (1 .. 4);
-   end record with Pack;
-
-   type Audio_Format is
-     (Unknown,
-      PCM) with Size => 16;
-
-   type Audio_Description_Block is record
-      Format          : Audio_Format;
-      Channels        : Unsigned_16;
-      Frequency       : Unsigned_32;
-      Byte_Per_Sec    : Unsigned_32;
-      Byte_Per_Block  : Unsigned_16;
-      Bits_Per_Sample : Unsigned_16;
-   end record with Pack;
-
-   type Metadata_Info is record
-      Artist    : String (1 .. 48) := (others => ' ');
-      Title     : String (1 .. 96) := (others => ' ');
-      Album     : String (1 .. 64) := (others => ' ');
-      Track_Num : Natural := 0;
-      Year      : Natural := 0;
-      Genre     : String (1 .. 32) := (others => ' ');
+   type Volume_Level is record
+      L : Float;
+      R : Float;
    end record;
 
-   type WAV_Info is record
-      Audio_Description : Audio_Description_Block;
-      Metadata          : Metadata_Info;
-      Data_Size         : Unsigned_32;
-   end record;
+   type Audio_State is
+     (Paused,
+      Stopped,
+      Playing);
 
-   function Read_Header
-     (F    : Filesystem.File_Handle;
-      Info : out WAV_Info) return WAV_Status_Code;
-   --  Decodes the WAV file's header and fills the INFO structure with it.
+   procedure Initialize (Volume : HAL.Audio.Audio_Volume);
+   --  Initializes the Audio device and internal structures.
 
-end Wav_Reader;
+   procedure Play
+     (Track : Wav_DB.Track_Id);
+   --  Plays the track.
+
+   function Get_Audio_State_Blocking return Audio_State;
+   --  Blocking call: retrieves the current Audio stream state.
+
+   function Current_Volume return Volume_Level;
+   --  Current Volume of the playing Buffer. This is calculated from an RMS
+   --  (Root-Sqare of Mean Squares) of the currently playing buffer.
+
+   procedure Pause;
+
+   procedure Resume;
+
+   procedure Stop;
+
+end Wav_Player;

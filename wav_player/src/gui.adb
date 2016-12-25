@@ -40,7 +40,7 @@ with Filesystem.VFS;        use Filesystem.VFS;
 
 with Gestures;              use Gestures;
 with Wav_DB;                use Wav_DB;
-with Wav_Reader;            use Wav_Reader;
+with Wav_Player;            use Wav_Player;
 
 package body GUI is
 
@@ -95,12 +95,13 @@ package body GUI is
    SEL_TRACKS_W      : constant := LCD_W - SEL_TRACKS_X;
    SEL_FONT_H        : constant := LCD_H / 17;
 
+   Play_Loop         : constant Boolean := True;
+
    Font              : constant Hershey_Fonts.Hershey_Font :=
                          Hershey_Fonts.Read (Hershey_Fonts.FuturaL.Font);
 
    Sel               : Wav_DB.Selection;
    Current_Track     : Wav_DB.Track_Id := No_Id;
-   Current_File      : Filesystem.File_Handle := null;
 
    type Selector_Id is
      (Sel_Artist,
@@ -974,16 +975,6 @@ package body GUI is
    end DB_Updated;
 
    --------------------
-   -- Display_Volume --
-   --------------------
-
-   procedure Display_Volume (Vol : Wav_Reader.Volume_Level)
-   is
-   begin
-      null;
-   end Display_Volume;
-
-   --------------------
    -- Gesture_Worker --
    --------------------
 
@@ -1058,14 +1049,14 @@ package body GUI is
       procedure Enqueue (Event : GUI_Event)
       is
       begin
-         if Event.Kind = Gesture_Event then
-            for J in The_Events'First .. Num_Events loop
-               if The_Events (J).Kind = Gesture_Event then
-                  The_Events (J) := Event;
-                  return;
-               end if;
-            end loop;
-         end if;
+         for J in The_Events'First .. Num_Events loop
+            if The_Events (J).Kind = Event.Kind then
+               The_Events (J .. Num_Events - 1) :=
+                 The_Events (J + 1 .. Num_Events);
+               The_Events (Num_Events) := Event;
+               return;
+            end if;
+         end loop;
 
          Num_Events := Num_Events + 1;
 
@@ -1184,9 +1175,13 @@ package body GUI is
 
                   else
                      --  Fill the database with the content of the sd-card
-                     Wav_DB.Read_Dir ("/sdcard/");
+                     Wav_DB.Read_Dir ("/sdcard/", Status);
 
-                     DB_Updated (True);
+                     if Status /= OK then
+                        Display_Error ("Error reading the sdcard");
+                     else
+                        DB_Updated (True);
+                     end if;
                   end if;
                end if;
 
@@ -1205,16 +1200,16 @@ package body GUI is
                Increment_Next := False;
 
                if State = Playing then
-                  Wav_Reader.Stop;
+                  Wav_Player.Stop;
                else
                   Event_Manager.Enqueue ((Kind => Audio_Finished_Event));
                end if;
 
             when Audio_Play_Pause_Event =>
                if State = Paused then
-                  Wav_Reader.Resume;
+                  Wav_Player.Resume;
                elsif State = Playing then
-                  Wav_Reader.Pause;
+                  Wav_Player.Pause;
                else
                   Event_Manager.Enqueue ((Kind  => Audio_Play_Event,
                                           Track => First_Track (Sel)));
@@ -1222,35 +1217,41 @@ package body GUI is
 
             when Audio_Next_Event =>
                if State = Playing
-                 and then Has_Next_Track (Sel, Current_Track)
+                 and then
+                   (Has_Next_Track (Sel, Current_Track) or else Play_Loop)
                then
-                  Wav_Reader.Stop;
+                  Wav_Player.Stop;
                   --  Automatically passes to the next track
                end if;
 
             when Audio_Previous_Event =>
                if State = Playing
-                 and then Has_Previous_Track (Sel, Current_Track)
+                 and then
+                   (Has_Previous_Track (Sel, Current_Track) or else Play_Loop)
                then
-                  Wav_Reader.Stop;
+                  Wav_Player.Stop;
                   Increment_Next := False;
                   Res := Previous_Track (Sel, Current_Track);
+
+                  if not Res then
+                     Current_Track := Last_Track (Sel);
+                  end if;
                end if;
 
             when Audio_Paused_Event =>
                State := Paused;
                Set_Controller_State
                  (Playing  => False,
-                  Has_Next => Wav_DB.Has_Next_Track (Sel, Current_Track),
-                  Has_Prev => Wav_DB.Has_Previous_Track (Sel, Current_Track));
+                  Has_Next => Play_Loop or else Wav_DB.Has_Next_Track (Sel, Current_Track),
+                  Has_Prev => Play_Loop or else Wav_DB.Has_Previous_Track (Sel, Current_Track));
                Display.Update_Layer (1, True);
 
             when Audio_Resumed_Event =>
                State := Playing;
                Set_Controller_State
                  (Playing  => True,
-                  Has_Next => Wav_DB.Has_Next_Track (Sel, Current_Track),
-                  Has_Prev => Wav_DB.Has_Previous_Track (Sel, Current_Track));
+                  Has_Next => Play_Loop or else Wav_DB.Has_Next_Track (Sel, Current_Track),
+                  Has_Prev => Play_Loop or else Wav_DB.Has_Previous_Track (Sel, Current_Track));
                Display.Update_Layer (1, True);
 
             when Audio_Started_Event =>
@@ -1266,8 +1267,8 @@ package body GUI is
                  (Track (Event.Track), 2, Light_Grey);
                Set_Controller_State
                  (Playing  => True,
-                  Has_Next => Wav_DB.Has_Next_Track (Sel, Current_Track),
-                  Has_Prev => Wav_DB.Has_Previous_Track (Sel, Current_Track));
+                  Has_Next => Play_Loop or else Wav_DB.Has_Next_Track (Sel, Current_Track),
+                  Has_Prev => Play_Loop or else Wav_DB.Has_Previous_Track (Sel, Current_Track));
                Display.Update_Layer (1, True);
 
             when Audio_Stopped_Event =>
@@ -1293,11 +1294,6 @@ package body GUI is
             when Audio_Finished_Event =>
                State := Stopped;
 
-               if Current_File /= null then
-                  Filesystem.Close (Current_File);
-                  Current_File := null;
-               end if;
-
                if No_Next then
                   --  We're told to stop, so do not try to play the next
                   --  track, but reset the No_Next state
@@ -1307,7 +1303,11 @@ package body GUI is
                   if Increment_Next then
                      Res := Next_Track (Sel, Current_Track);
                      if not Res then
-                        Current_Track := No_Id;
+                        if Play_Loop then
+                           Current_Track := First_Track (Sel);
+                        else
+                           Current_Track := No_Id;
+                        end if;
                      end if;
                   else
                      --  Just play the current track for now, but then play the
@@ -1319,11 +1319,7 @@ package body GUI is
                if SDCard_Device.Card_Present
                  and then Current_Track /= No_Id
                then
-                  Current_File := Filesystem.VFS.Open
-                    (Track_Path (Current_Track),
-                     Mode   => Read_Mode,
-                     Status => Status);
-                  Play (Current_File);
+                  Wav_Player.Play (Current_Track);
                else
                   Event_Manager.Enqueue ((Kind => Audio_Stopped_Event));
                end if;

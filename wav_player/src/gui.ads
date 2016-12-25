@@ -21,8 +21,6 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Wav_Reader;
-
 package GUI is
 
    procedure Initialize;
@@ -34,7 +32,5 @@ package GUI is
    --  To call when a SDCard is inserted
 
    procedure Main_Loop;
-
-   procedure Display_Volume (Vol : Wav_Reader.Volume_Level);
 
 end GUI;

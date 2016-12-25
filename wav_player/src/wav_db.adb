@@ -30,7 +30,6 @@ with STM32.SDRAM;    use STM32.SDRAM;
 
 with Filesystem.VFS; use Filesystem, Filesystem.VFS;
 with Wav_Reader;     use Wav_Reader;
-with GUI;
 
 package body Wav_DB is
 
@@ -201,25 +200,28 @@ package body Wav_DB is
    -- Read_Dir --
    --------------
 
-   procedure Read_Dir (Path : String)
+   procedure Read_Dir
+     (Path   : String;
+      Status : out Status_Code)
    is
       Dir         : Directory_Handle;
-      Status      : Status_Code;
       E           : Node_Access;
       Error_State : Boolean := False;
+
    begin
       Dir := Open (Path, Status);
 
       if Status /= OK then
-         GUI.Display_Error
-           ("!!! Error reading the directory " & Path);
          return;
       end if;
 
       while not Error_State loop
          E := Read (Dir, Status);
 
-         exit when Status = No_More_Entries;
+         if Status = No_More_Entries then
+            Status := OK;
+            exit;
+         end if;
 
          if Status /= OK then
             Error_State := True;
@@ -231,7 +233,9 @@ package body Wav_DB is
            and then E.Basename /= ".."
          then
             if E.Is_Subdirectory then
-               Read_Dir (Path & E.Basename & "/");
+               Read_Dir (Path & E.Basename & "/", Status);
+               exit when Status /= OK;
+
             else
                declare
                   N : constant String := E.Basename;
@@ -633,6 +637,22 @@ package body Wav_DB is
 
       return No_Id;
    end First_Track;
+
+   ----------------
+   -- Last_Track --
+   ----------------
+
+   function Last_Track (S : Selection) return Track_Id
+   is
+   begin
+      for J in reverse 1 .. Last loop
+         if Matches (J, S) then
+            return J;
+         end if;
+      end loop;
+
+      return No_Id;
+   end Last_Track;
 
    --------------------
    -- Has_Next_Track --

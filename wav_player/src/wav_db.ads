@@ -21,13 +21,15 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
+with Filesystem;
 with Wav_Reader;
 
 package Wav_DB is
 
    MAX_FILES : constant := 500;
 
-   procedure Read_Dir (Path : String);
+   procedure Read_Dir (Path   : String;
+                       Status : out Filesystem.Status_Code);
    procedure Add_File (Path : String);
 
    procedure Reset_DB;
@@ -79,6 +81,7 @@ package Wav_DB is
 
    function Num_Tracks (S : Selection) return Natural;
    function First_Track (S : Selection) return Track_Id;
+   function Last_Track (S : Selection) return Track_Id;
    function Has_Next_Track
      (S  : Selection;
       Id : Track_Id) return Boolean;
