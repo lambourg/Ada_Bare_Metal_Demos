@@ -1,7 +1,7 @@
-------------------------------------------------------------------------------
+-----------------------------------------------------------------------------
 --                        Bareboard drivers examples                        --
 --                                                                          --
---                     Copyright (C) 2015-2016, AdaCore                     --
+--                     Copyright (C) 2016, J. Lambourg                      --
 --                                                                          --
 -- This library is free software;  you can redistribute it and/or modify it --
 -- under terms of the  GNU General Public License  as published by the Free --
@@ -23,12 +23,14 @@
 
 with System;
 with Ada.Unchecked_Conversion;
+with Interfaces;     use Interfaces;
 
 with HAL;            use HAL;
 with STM32.SDRAM;    use STM32.SDRAM;
 
 with Filesystem.VFS; use Filesystem, Filesystem.VFS;
 with Wav_Reader;     use Wav_Reader;
+with GUI;
 
 package body Wav_DB is
 
@@ -45,16 +47,118 @@ package body Wav_DB is
       Path : Path_Type;
    end record;
 
-   type Files_Array is array (Track_Index range 1 .. MAX_FILES) of Wav_File;
+   type Files_Array is array (Valid_Id) of Wav_File;
    type Files_Array_Access is access all Files_Array;
 
    Files : Files_Array_Access := null;
-   Last  : Track_Index := 0;
-
-   Artists : Track_Array := (others => 0);
-   Albums  : Track_Array := (others => 0);
+   Last  : Id_Type := 0;
 
    function Trim (S : String) return String;
+
+   function Matches
+     (Id : Id_Type;
+      S  : Selection) return Boolean;
+
+   function From_UTF8 (S : String) return String;
+   --  Tries to translate some simple utf-8 encoded characters into ASCII
+
+   ---------------
+   -- From_UTF8 --
+   ---------------
+
+   function From_UTF8 (S : String) return String
+   is
+      Ret     : String := S;
+      Idx_S   : Natural := S'First;
+      Idx_Ret : Natural := Ret'First - 1;
+      Val     : Byte;
+      Unicode : HAL.UInt32;
+
+   begin
+      while Idx_S <= S'Last loop
+         Val := Character'Pos (S (Idx_S));
+         Idx_Ret := Idx_Ret + 1;
+
+         if Val < 16#7F# then
+            Ret (Idx_Ret) := S (Idx_S);
+            Idx_S := Idx_S + 1;
+
+         elsif Val >= 16#C0# and then Val < 16#E0# then
+            Unicode := Shift_Left (UInt32 (Val and 2#0001_1111#), 6);
+            Idx_S := Idx_S + 1;
+            Val := Character'Pos (S (Idx_S));
+            Idx_S := Idx_S + 1;
+            Unicode := Unicode or UInt32 (Val and 2#0011_1111#);
+
+            if Unicode in 16#C0# .. 16#C5# then
+               Ret (Idx_Ret) := 'A';
+               --  ??? C6 is "AE", should expand in this case
+            elsif Unicode = 16#C7# then
+               Ret (Idx_Ret) := 'C';
+
+            elsif Unicode in 16#C8# .. 16#CB# then
+               Ret (Idx_Ret) := 'E';
+
+            elsif Unicode in 16#CC# .. 16#CF# then
+               Ret (Idx_Ret) := 'I';
+
+            elsif Unicode = 16#D0# then
+               Ret (Idx_Ret) := 'D';
+
+            elsif Unicode = 16#D1# then
+               Ret (Idx_Ret) := 'N';
+
+            elsif Unicode in 16#D2# .. 16#D6# then
+               Ret (Idx_Ret) := 'O';
+
+            elsif Unicode = 16#D7# then
+               Ret (Idx_Ret) := 'x';
+
+            elsif Unicode = 16#D8# then
+               Ret (Idx_Ret) := 'O';
+
+            elsif Unicode in 16#D9# .. 16#DC# then
+               Ret (Idx_Ret) := 'U';
+
+            elsif Unicode = 16#DD# then
+               Ret (Idx_Ret) := 'Y';
+
+            elsif Unicode in 16#E0# .. 16#E5# then
+               Ret (Idx_Ret) := 'a';
+
+               --  ??? expand E6 into ae
+            elsif Unicode = 16#E7# then
+               Ret (Idx_Ret) := 'c';
+
+            elsif Unicode in 16#E8# .. 16#EB# then
+               Ret (Idx_Ret) := 'e';
+
+            elsif Unicode in 16#EC# .. 16#EF# then
+               Ret (Idx_Ret) := 'i';
+
+            elsif Unicode = 16#F1# then
+               Ret (Idx_Ret) := 'n';
+
+            elsif Unicode in 16#F2# .. 16#F6# then
+               Ret (Idx_Ret) := 'o';
+
+            else
+               Ret (Idx_Ret) := '?';
+            end if;
+
+         elsif Val < 16#F0# then
+            Idx_S := Idx_S + 3;
+            --  Don't try to decode the value
+            Ret (Idx_Ret) := '?';
+         else
+            Idx_S := Idx_S + 4;
+            --  Don't try to decode the value
+            Ret (Idx_Ret) := '?';
+         end if;
+      end loop;
+
+      return Ret (Ret'First .. Idx_Ret);
+   end From_UTF8;
 
    ---------
    -- "-" --
@@ -86,7 +190,7 @@ package body Wav_DB is
    begin
       for J in reverse S'Range loop
          if S (J) /= ' ' then
-            return S (S'First .. J);
+            return From_UTF8 (S (S'First .. J));
          end if;
       end loop;
 
@@ -94,18 +198,68 @@ package body Wav_DB is
    end Trim;
 
    --------------
+   -- Read_Dir --
+   --------------
+
+   procedure Read_Dir (Path : String)
+   is
+      Dir         : Directory_Handle;
+      Status      : Status_Code;
+      E           : Node_Access;
+      Error_State : Boolean := False;
+   begin
+      Dir := Open (Path, Status);
+
+      if Status /= OK then
+         GUI.Display_Error
+           ("!!! Error reading the directory " & Path);
+         return;
+      end if;
+
+      while not Error_State loop
+         E := Read (Dir, Status);
+
+         exit when Status = No_More_Entries;
+
+         if Status /= OK then
+            Error_State := True;
+            exit;
+         end if;
+
+         if not E.Is_Hidden
+           and then E.Basename /= "."
+           and then E.Basename /= ".."
+         then
+            if E.Is_Subdirectory then
+               Read_Dir (Path & E.Basename & "/");
+            else
+               declare
+                  N : constant String := E.Basename;
+               begin
+                  if N'Length > 4
+                    and then N (N'Last - 3 .. N'Last) = ".wav"
+                  then
+                     Add_File (Path & E.Basename);
+                  end if;
+               end;
+            end if;
+         end if;
+      end loop;
+
+      Close (Dir);
+   end Read_Dir;
+
+   --------------
    -- Add_File --
    --------------
 
    procedure Add_File (Path : String)
    is
-      File  : File_Handle;
-      Info  : WAV_Info;
-      Idx   : Track_Index;
-      Addr  : System.Address;
+      File   : File_Handle;
+      Info   : WAV_Info;
+      Idx    : Id_Type;
+      Addr   : System.Address;
       Status : Status_Code;
-
-      use type HAL.UInt32;
 
       function To_Access is new Ada.Unchecked_Conversion
         (System.Address, Files_Array_Access);
@@ -154,58 +308,6 @@ package body Wav_DB is
       Files (Idx).Info := Info.Metadata;
    end Add_File;
 
-   ---------------
-   -- Update_DB --
-   ---------------
-
-   procedure Update_DB
-   is
-      Idx   : Track_Index;
-   begin
-      Artists := (others => 0);
-      Albums  := (others => 0);
-
-      for T in Files'First .. Last loop
-         Idx := Artists'First;
-
-         for J in Artists'Range loop
-            if Artists (J) = 0 then
-               --  Not found, so let's insert a new artist
-               if J > Idx then
-                  Artists (Idx + 1 .. J) := Artists (Idx .. J - 1);
-               end if;
-               Artists (Idx) := T;
-               exit;
-            end if;
-
-            if Files (Artists (J)).Info.Artist = Files (T).Info.Artist then
-               exit;
-            elsif Files (Artists (J)).Info.Artist < Files (T).Info.Artist then
-               Idx := J + 1;
-            end if;
-         end loop;
-
-         Idx := Albums'First;
-
-         for J in Albums'Range loop
-            if Albums (J) = 0 then
-               --  Not found, so let's insert a new album
-               if J > Idx then
-                  Albums (Idx + 1 .. J) := Albums (Idx .. J - 1);
-               end if;
-               Albums (Idx) := T;
-               exit;
-            end if;
-
-            if Files (Albums (J)).Info.Album = Files (T).Info.Album then
-               exit;
-            elsif Files (Albums (J)).Info.Album < Files (T).Info.Album then
-               Idx := J + 1;
-            end if;
-         end loop;
-      end loop;
-   end Update_DB;
-
    --------------
    -- Reset_DB --
    --------------
@@ -215,54 +317,46 @@ package body Wav_DB is
    begin
       Files   := null;
       Last    := 0;
-      Artists := (others => 0);
-      Albums  := (others => 0);
    end Reset_DB;
 
-   -------------------
-   -- New_Selection --
-   -------------------
+   ------------
+   -- Artist --
+   ------------
 
-   function New_Selection return Selection
-   is
-      Ret : Selection := (others => (others => Invalid_Track));
-   begin
-      for T in Files'First .. Last loop
-         Ret.Tracks (T) := T;
-      end loop;
-
-      Ret.Artists := Artists;
-      Ret.Albums  := Albums;
-
-      return Ret;
-   end New_Selection;
-
-   ----------------
-   -- Num_Tracks --
-   ----------------
-
-   function Num_Tracks (S : Selection) return Natural
+   function Artist (Id : Artist_Id) return String
    is
    begin
-      for T in S.Tracks'Range loop
-         if S.Tracks (T) = Invalid_Track then
-            return Natural (T - 1);
-         end if;
-      end loop;
+      return Trim (Files (Id).Info.Artist);
+   end Artist;
 
-      return S.Tracks'Length;
-   end Num_Tracks;
+   -----------
+   -- Album --
+   -----------
+
+   function Album  (Id : Album_Id) return String
+   is
+   begin
+      return Trim (Files (Id).Info.Album);
+   end Album;
+
+   -----------
+   -- Track --
+   -----------
+
+   function Track (Id : Album_Id) return String
+   is
+   begin
+      return Trim (Files (Id).Info.Title);
+   end Track;
 
    ----------------
    -- Track_Path --
    ----------------
 
-   function Track_Path
-     (S   : Selection;
-      Num : Natural) return String
+   function Track_Path (Id : Track_Id) return String
    is
    begin
-      return -Files (S.Tracks (Num)).Path;
+      return -Files (Id).Path;
    end Track_Path;
 
    ----------------
@@ -270,12 +364,49 @@ package body Wav_DB is
    ----------------
 
    function Track_Info
-     (S   : Selection;
-      Num : Natural) return Wav_Reader.Metadata_Info
+     (Id : Track_Id) return Wav_Reader.Metadata_Info
    is
    begin
-      return Files (S.Tracks (Num)).Info;
+      return Files (Id).Info;
    end Track_Info;
+
+   -------------
+   -- Matches --
+   -------------
+
+   function Matches
+     (Id : Id_Type;
+      S  : Selection) return Boolean
+   is
+   begin
+      if Id <= 0 or else Id > Last then
+         return False;
+      end if;
+
+      if S.Artist_Filter /= All_Id then
+         if Artist (Id) /= Artist (S.Artist_Filter) then
+            return False;
+         end if;
+      end if;
+
+      if S.Album_Filter /= All_Id then
+         if Album (Id) /= Album (S.Album_Filter) then
+            return False;
+         end if;
+      end if;
+
+      return True;
+   end Matches;
+
+   --------------
+   -- Is_Empty --
+   --------------
+
+   function Is_Empty (S : Selection) return Boolean
+   is
+   begin
+      return First_Track (S) = No_Id;
+   end Is_Empty;
 
    -----------------
    -- Num_Artists --
@@ -283,125 +414,312 @@ package body Wav_DB is
 
    function Num_Artists (S : Selection) return Natural
    is
+      Id : Artist_Id;
+      Num : Natural := 0;
    begin
-      for J in S.Artists'Range loop
-         if S.Artists (J) = Invalid_Track then
-            return J - 1;
-         end if;
+      Id := First_Artist (S);
+
+      while Id /= No_Id loop
+         Num := Num + 1;
+         exit when not Next_Artist (S, Id);
       end loop;
 
-      return Artists'Length;
+      return Num;
    end Num_Artists;
 
-   ------------
-   -- Artist --
-   ------------
+   ------------------
+   -- First_Artist --
+   ------------------
 
-   function Artist (S   : Selection;
-                    Num : Natural) return String
+   function First_Artist (S : Selection) return Artist_Id
    is
    begin
-      return Trim (Files (S.Artists (Num)).Info.Artist);
-   end Artist;
-
-   -------------------
-   -- Select_Artist --
-   -------------------
-
-   procedure Select_Artist
-     (S   : in out Selection;
-      Num : Natural)
-   is
-      Info : Metadata_Info;
-   begin
-      Info := Files (S.Artists (Num)).Info;
-
-      for J in reverse S.Tracks'Range loop
-         if S.Tracks (J) /= Invalid_Track then
-            if Files (S.Tracks (J)).Info.Artist /= Info.Artist then
-               S.Tracks (J .. S.Tracks'Last - 1) :=
-                 S.Tracks (J + 1 .. S.Tracks'Last);
-               S.Tracks (S.Tracks'Last) := Invalid_Track;
+      if S.Artist_Filter > 0 then
+         return S.Artist_Filter;
+      else
+         for J in 1 .. Last loop
+            if Matches (J, S) then
+               return J;
             end if;
-         end if;
-      end loop;
-
-      for J in reverse S.Albums'Range loop
-         if S.Albums (J) /= Invalid_Track then
-            if Files (S.Albums (J)).Info.Artist /= Info.Artist then
-               S.Albums (J .. S.Albums'Last - 1) :=
-                 S.Albums (J + 1 .. S.Albums'Last);
-               S.Albums (S.Albums'Last) := Invalid_Track;
-            end if;
-         end if;
-      end loop;
-
-      if Num /= S.Artists'First then
-         S.Artists (S.Artists'First) := S.Artists (Num);
+         end loop;
       end if;
 
-      S.Artists (S.Artists'First + 1 .. S.Artists'Last) :=
-        (others => Invalid_Track);
-   end Select_Artist;
+      return No_Id;
+   end First_Artist;
 
    -----------------
-   -- Num_Albums --
+   -- Next_Artist --
    -----------------
+
+   function Next_Artist
+     (S  : Selection;
+      Id : in out Artist_Id) return Boolean
+   is
+      Current : constant String := Artist (Id);
+   begin
+      if S.Artist_Filter /= All_Id then
+         return False;
+      end if;
+
+      for J in Id + 1 .. Last loop
+         if Artist (J) /= Current
+           and then Matches (J, S)
+         then
+            Id := J;
+            return True;
+         end if;
+      end loop;
+
+      Id := No_Id;
+      return False;
+   end Next_Artist;
+
+   ----------------
+   -- Set_Artist --
+   ----------------
+
+   procedure Set_Artist
+     (S : in out Selection;
+      Id : Artist_Id)
+   is
+   begin
+      S.Artist_Filter := Id;
+   end Set_Artist;
+
+   ---------------------
+   -- Selected_Artist --
+   ---------------------
+
+   function Selected_Artist (S : Selection) return Artist_Id
+   is (S.Artist_Filter);
+
+   ----------------
+   -- Num_Albums --
+   ----------------
 
    function Num_Albums (S : Selection) return Natural
    is
+      Id  : Album_Id;
+      Num : Natural := 0;
    begin
-      for J in S.Albums'Range loop
-         if S.Albums (J) = Invalid_Track then
-            return J - 1;
-         end if;
+      Id := First_Album (S);
+
+      while Id /= No_Id loop
+         Num := Num + 1;
+         exit when not Next_Album (S, Id);
       end loop;
 
-      return Albums'Length;
+      return Num;
    end Num_Albums;
 
-   -----------
-   -- Album --
-   -----------
+   -----------------
+   -- First_Album --
+   -----------------
 
-   function Album (S   : Selection;
-                    Num : Natural) return String
+   function First_Album (S : Selection) return Album_Id
    is
    begin
-      return Trim (Files (S.Albums (Num)).Info.Album);
-   end Album;
-
-   -------------------
-   -- Select_Album --
-   -------------------
-
-   procedure Select_Album
-     (S   : in out Selection;
-      Num : Natural)
-   is
-      Info : Metadata_Info;
-   begin
-      Info := Files (S.Albums (Num)).Info;
-
-      for J in reverse S.Tracks'Range loop
-         if S.Tracks (J) /= Invalid_Track then
-            if Files (S.Tracks (J)).Info.Album /= Info.Album then
-               S.Tracks (J .. S.Tracks'Last - 1) :=
-                 S.Tracks (J + 1 .. S.Tracks'Last);
-               S.Tracks (S.Tracks'Last) := Invalid_Track;
+      if S.Album_Filter > 0 then
+         return S.Album_Filter;
+      else
+         for J in 1 .. Last loop
+            if Matches (J, S) then
+               return J;
             end if;
+         end loop;
+      end if;
+
+      return No_Id;
+   end First_Album;
+
+   ----------------
+   -- Next_Album --
+   ----------------
+
+   function Next_Album
+     (S  : Selection;
+      Id : in out Album_Id) return Boolean
+   is
+      Current : constant String := Album (Id);
+   begin
+      if S.Album_Filter /= All_Id then
+         return False;
+      end if;
+
+      for J in Id + 1 .. Last loop
+         if Album (J) /= Current
+           and then Matches (J, S)
+         then
+            Id := J;
+            return True;
          end if;
       end loop;
 
-      for J in S.Albums'Range loop
-         if S.Albums (J) /= Invalid_Track
-           and then Files (S.Albums (J)).Info.Album = Info.Album
-         then
-            S.Albums (S.Albums'First) := S.Albums (J);
-            S.Albums (S.Albums'First + 1 .. S.Albums'Last) :=
-              (others => Invalid_Track);
+      Id := No_Id;
+      return False;
+   end Next_Album;
+
+   ---------------
+   -- Set_Album --
+   ---------------
+
+   procedure Set_Album
+     (S  : in out Selection;
+      Id : Album_Id)
+   is
+   begin
+      S.Album_Filter := Id;
+   end Set_Album;
+
+   --------------------
+   -- Selected_Album --
+   --------------------
+
+   function Selected_Album (S : Selection) return Album_Id
+   is (S.Album_Filter);
+
+   ---------------
+   -- Has_Album --
+   ---------------
+
+   function Has_Album (S  : Selection;
+                       Id : Album_Id) return Boolean
+   is
+      Name    : constant String := Album (Id);
+      Current : Album_Id := First_Album (S);
+   begin
+      while Current /= No_Id loop
+         if Album (Current) = Name then
+            return True;
+         end if;
+
+         exit when not Next_Album (S, Current);
+      end loop;
+
+      return False;
+   end Has_Album;
+
+   ----------------
+   -- Num_Tracks --
+   ----------------
+
+   function Num_Tracks (S : Selection) return Natural
+   is
+      Id  : Track_Id;
+      Num : Natural := 0;
+   begin
+      Id := First_Track (S);
+
+      while Id /= No_Id loop
+         Num := Num + 1;
+         exit when not Next_Track (S, Id);
+      end loop;
+
+      return Num;
+   end Num_Tracks;
+
+   -----------------
+   -- First_Track --
+   -----------------
+
+   function First_Track (S : Selection) return Track_Id
+   is
+   begin
+      for J in 1 .. Last loop
+         if Matches (J, S) then
+            return J;
          end if;
       end loop;
-   end Select_Album;
+
+      return No_Id;
+   end First_Track;
+
+   --------------------
+   -- Has_Next_Track --
+   --------------------
+
+   function Has_Next_Track
+     (S  : Selection;
+      Id : Track_Id) return Boolean
+   is
+   begin
+      for J in Id + 1 .. Last loop
+         if Matches (J, S) then
+            return True;
+         end if;
+      end loop;
+
+      return False;
+   end Has_Next_Track;
+
+   ------------------------
+   -- Has_Previous_Track --
+   ------------------------
+
+   function Has_Previous_Track
+     (S  : Selection;
+      Id : Track_Id) return Boolean
+   is
+   begin
+      for J in reverse 1 .. Id - 1 loop
+         if Matches (J, S) then
+            return True;
+         end if;
+      end loop;
+
+      return False;
+   end Has_Previous_Track;
+
+   ----------------
+   -- Next_Track --
+   ----------------
+
+   function Next_Track
+     (S  : Selection;
+      Id : in out Track_Id) return Boolean
+   is
+   begin
+      for J in Id + 1 .. Last loop
+         if Matches (J, S) then
+            Id := J;
+            return True;
+         end if;
+      end loop;
+
+      Id := No_Id;
+      return False;
+   end Next_Track;
+
+   --------------------
+   -- Previous_Track --
+   --------------------
+
+   function Previous_Track
+     (S  : Selection;
+      Id : in out Track_Id) return Boolean
+   is
+   begin
+      for J in reverse 1 .. Id - 1 loop
+         if Matches (J, S) then
+            Id := J;
+            return True;
+         end if;
+      end loop;
+
+      Id := No_Id;
+      return False;
+   end Previous_Track;
+
+   ---------------
+   -- Has_Track --
+   ---------------
+
+   function Has_Track
+     (S  : Selection;
+      Id : Track_Id) return Boolean
+   is
+   begin
+      return Matches (Id, S);
+   end Has_Track;
 
 end Wav_DB;

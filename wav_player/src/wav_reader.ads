@@ -1,7 +1,7 @@
-------------------------------------------------------------------------------
+-----------------------------------------------------------------------------
 --                        Bareboard drivers examples                        --
 --                                                                          --
---                     Copyright (C) 2015-2016, AdaCore                     --
+--                     Copyright (C) 2016, J. Lambourg                      --
 --                                                                          --
 -- This library is free software;  you can redistribute it and/or modify it --
 -- under terms of the  GNU General Public License  as published by the Free --
@@ -64,9 +64,9 @@ package Wav_Reader is
    end record with Pack;
 
    type Metadata_Info is record
-      Artist    : String (1 .. 32) := (others => ' ');
-      Title     : String (1 .. 32) := (others => ' ');
-      Album     : String (1 .. 32) := (others => ' ');
+      Artist    : String (1 .. 48) := (others => ' ');
+      Title     : String (1 .. 96) := (others => ' ');
+      Album     : String (1 .. 64) := (others => ' ');
       Track_Num : Natural := 0;
       Year      : Natural := 0;
       Genre     : String (1 .. 32) := (others => ' ');
@@ -85,12 +85,20 @@ package Wav_Reader is
       Info : out WAV_Info) return WAV_Status_Code;
 
    procedure Play
-     (F    : Filesystem.File_Handle;
-      Info : WAV_Info);
+     (F    : Filesystem.File_Handle);
 
-   function Is_Playing return Boolean;
+   type Audio_State is
+     (Paused,
+      Stopped,
+      Playing);
+
+   function Get_Audio_State_Blocking return Audio_State;
 
    function Current_Volume return Volume_Level;
+
+   procedure Pause;
+
+   procedure Resume;
 
    procedure Stop;
 

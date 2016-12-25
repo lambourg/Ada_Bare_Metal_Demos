@@ -1,7 +1,7 @@
-------------------------------------------------------------------------------
+-----------------------------------------------------------------------------
 --                        Bareboard drivers examples                        --
 --                                                                          --
---                     Copyright (C) 2015-2016, AdaCore                     --
+--                     Copyright (C) 2016, J. Lambourg                      --
 --                                                                          --
 -- This library is free software;  you can redistribute it and/or modify it --
 -- under terms of the  GNU General Public License  as published by the Free --
@@ -25,6 +25,7 @@ with System;
 with Ada.Unchecked_Conversion;
 with Ada.Real_Time; use Ada.Real_Time;
 
+with Cortex_M.Cache;
 with Filesystem;    use Filesystem;
 
 with HAL.Audio;     use HAL.Audio;
@@ -37,7 +38,8 @@ with Cortex_M.FPU;  use Cortex_M.FPU;
 package body Wav_Reader is
 
    subtype Buffer_Type is Audio_Buffer (1 .. 1 * 1024);
-   Buffer          : aliased Buffer_Type := (others => 0);
+   Buffer          : aliased Buffer_Type := (others => 0)
+        with Alignment => 4;
    First_Byte_Left : Boolean := True;
 
    protected Buffer_Scheduler is
@@ -53,44 +55,67 @@ package body Wav_Reader is
       Available    : Boolean := True;
    end Buffer_Scheduler;
 
-   type WAV_File is record
-      F    : Filesystem.File_Handle;
-      Info : WAV_Info;
-   end record;
-
    task WAV_Player with Priority => System.Priority'Last;
 
-   --------------------
-   -- File_Dispenser --
-   --------------------
+   ---------------------
+   -- File_Controller --
+   ---------------------
 
-   protected Controller is
-      entry Next_File (W : out WAV_File);
-      procedure Set_Next (F    : Filesystem.File_Handle;
-                          Info : WAV_Info);
-      function Done_Playing return Boolean;
-      procedure Set_Done;
+   protected File_Controller is
+      entry Next_File (W : out Filesystem.File_Handle);
+      procedure Set_Next (F : Filesystem.File_Handle);
    private
-      The_WAV  : WAV_File;
+      The_WAV  : Filesystem.File_Handle;
       Has_Next : Boolean := False;
-      Done     : Boolean := True;
-   end Controller;
+   end File_Controller;
 
-   ----------------
-   -- Controller --
-   ----------------
+   type Audio_Command is
+     (No_Command,
+      Play_Command,
+      Resume_Command,
+      Pause_Command,
+      Stop_Command);
 
-   protected body Controller is
+   ----------------------
+   -- Audio_Controller --
+   ----------------------
+
+   protected Audio_Controller is
+      entry Wait_Command (Command : out Audio_Command);
+      procedure Next_Command (Command : out Audio_Command);
+      procedure Set_Command (Command : Audio_Command);
+   private
+      Cmd : Audio_Command;
+      Has_Cmd : Boolean := False;
+   end Audio_Controller;
+
+   ----------------------
+   -- State_Controller --
+   ----------------------
+
+   protected State_Controller is
+      entry Get_State (State : out Audio_State);
+      function State return Audio_State;
+      procedure Set_State (State : Audio_State);
+   private
+      The_State : Audio_State := Stopped;
+      New_State : Boolean := False;
+   end State_Controller;
+
+   ---------------------
+   -- File_Controller --
+   ---------------------
+
+   protected body File_Controller is
 
       ---------------
       -- Next_File --
       ---------------
 
-      entry Next_File (W : out WAV_File) when Has_Next
+      entry Next_File (W : out Filesystem.File_Handle) when Has_Next
       is
       begin
          Has_Next := False;
-         Done     := False;
          W        := The_WAV;
       end Next_File;
 
@@ -99,34 +124,124 @@ package body Wav_Reader is
       --------------
 
       procedure Set_Next
-        (F    : Filesystem.File_Handle;
-         Info : WAV_Info)
+        (F : Filesystem.File_Handle)
       is
       begin
-         The_WAV := (F, Info);
+         The_WAV := F;
          Has_Next := True;
       end Set_Next;
+   end File_Controller;
+
+   ----------------------
+   -- Audio_Controller --
+   ----------------------
+
+   protected body Audio_Controller is
 
       ------------------
-      -- Done_Playing --
+      -- Wait_Command --
       ------------------
 
-      function Done_Playing return Boolean
+      entry Wait_Command (Command : out Audio_Command) when Has_Cmd is
+      begin
+         Command := Cmd;
+         Has_Cmd := False;
+      end Wait_Command;
+
+      ------------------
+      -- Next_Command --
+      ------------------
+
+      procedure Next_Command (Command : out Audio_Command) is
+      begin
+         if Has_Cmd then
+            Command := Cmd;
+            Has_Cmd := False;
+         else
+            Command := No_Command;
+         end if;
+      end Next_Command;
+
+      -----------------
+      -- Set_Command --
+      -----------------
+
+      procedure Set_Command (Command : Audio_Command)
+      is
+         The_State : constant Audio_State := State_Controller.State;
+      begin
+         case Command is
+            when Play_Command =>
+               if The_State = Playing then
+                  --  Stop the currently playing track, this will make the
+                  --  task move on to the next track
+                  Cmd := Stop_Command;
+                  Has_Cmd := True;
+               end if;
+
+            when Resume_Command =>
+               if The_State = Paused then
+                  Cmd := Command;
+                  Has_Cmd := True;
+               end if;
+
+            when Pause_Command =>
+               if The_State = Playing then
+                  Cmd := Command;
+                  Has_Cmd := True;
+               end if;
+
+            when Stop_Command =>
+               if The_State /= Stopped then
+                  Cmd := Command;
+                  Has_Cmd := True;
+               end if;
+
+            when No_Command =>
+               null;
+         end case;
+      end Set_Command;
+
+   end Audio_Controller;
+
+   ----------------------
+   -- State_Controller --
+   ----------------------
+
+   protected body State_Controller is
+
+      ---------------
+      -- Get_State --
+      ---------------
+
+      entry Get_State (State : out Audio_State) when New_State
       is
       begin
-         return Done;
-      end Done_Playing;
+         State := The_State;
+         New_State := False;
+      end Get_State;
 
-      --------------
-      -- Set_Done --
-      --------------
+      -----------
+      -- State --
+      -----------
 
-      procedure Set_Done
+      function State return Audio_State
       is
       begin
-         Done := True;
-      end Set_Done;
-   end Controller;
+         return The_State;
+      end State;
+
+      ---------------
+      -- Set_State --
+      ---------------
+
+      procedure Set_State (State : Audio_State)
+      is
+      begin
+         The_State := State;
+         New_State := True;
+      end Set_State;
+   end State_Controller;
 
    ----------------------
    -- Buffer_Scheduler --
@@ -185,22 +300,25 @@ package body Wav_Reader is
    ----------------
 
    task body WAV_Player is
-      W              : WAV_File;
+      W              : Filesystem.File_Handle;
+      Info           : WAV_Info;
       Idx            : Natural;
       Len            : Natural;
       Frq            : Audio_Frequency;
       Total          : Unsigned_32;
+      WAV_Status     : WAV_Status_Code with Unreferenced;
       Status         : Status_Code with Unreferenced;
       Initial_Length : File_Size;
 
    begin
       loop
-         Controller.Next_File (W);
-
+         File_Controller.Next_File (W);
+         State_Controller.Set_State (Playing);
+         WAV_Status := Read_Header (W, Info);
          Frq := Audio_Frequency'First;
 
          for F in Audio_Frequency'Range loop
-            exit when W.Info.Audio_Description.Frequency < F'Enum_Rep;
+            exit when Info.Audio_Description.Frequency < F'Enum_Rep;
             Frq := F;
          end loop;
 
@@ -212,10 +330,13 @@ package body Wav_Reader is
          --  Read a few data to make sure that next read operations are aligned
          --  on blocks: this speeds greatly the read procedure
          Buffer_Scheduler.Next_Index (Idx, Len);
-         Initial_Length := (512 - (Offset (W.F) mod 512));
-         Status := W.F.Read
+         Initial_Length := (512 - (Offset (W) mod 512));
+         Status := W.Read
            (Buffer (Idx + Len - Integer (Initial_Length / 2) - 1)'Address,
             Initial_Length);
+         Cortex_M.Cache.Clean_DCache
+           (Buffer (Idx + Len - Integer (Initial_Length / 2) - 1)'Address,
+            Integer (Initial_Length));
          Total := Unsigned_32 (Initial_Length / 2);
          --  Tell the volume meter which side is the first value of the buffer:
          --  Data is 16-bit aligned, so if we're not 32-bit aligned, we need
@@ -225,21 +346,43 @@ package body Wav_Reader is
          loop
             declare
                Cnt : File_Size;
+               Cmd : Audio_Command;
             begin
                Buffer_Scheduler.Next_Index (Idx, Len);
 
                STM32.Board.Turn_On (STM32.Board.Green);
                Cnt := File_Size (Len) * 2;
-               Status := W.F.Read (Buffer (Idx)'Address, Cnt);
+               Status := W.Read (Buffer (Idx)'Address, Cnt);
+               --  Make sure all cached data is pushed to the SRAM before DMA
+               --  transfer.
+               --  No effect os the M4, only on the Cortex-M7 with d-cache
+               Cortex_M.Cache.Clean_DCache
+                 (Buffer (Idx)'Address, Integer (Cnt));
                STM32.Board.Turn_Off (STM32.Board.Green);
                Total := Total + Unsigned_32 (Cnt / 2);
 
-               exit when Total >= W.Info.Data_Size or else Cnt = 0;
-               exit when Controller.Done_Playing;
+               exit when Total >= Info.Data_Size or else Cnt = 0;
+               Audio_Controller.Next_Command (Cmd);
+               if Cmd = Pause_Command then
+                  STM32.Board.Audio_Device.Pause;
+                  State_Controller.Set_State (Paused);
+
+                  loop
+                     Audio_Controller.Wait_Command (Cmd);
+                     exit when Cmd = Resume_Command or else Cmd = Stop_Command;
+                  end loop;
+
+                  if Cmd = Resume_Command then
+                     STM32.Board.Audio_Device.Resume;
+                     State_Controller.Set_State (Playing);
+                  end if;
+               end if;
+
+               exit when Cmd = Stop_Command;
             end;
          end loop;
 
-         Controller.Set_Done;
+         State_Controller.Set_State (Stopped);
          Buffer := (others => 0);
          STM32.Board.Audio_Device.Pause;
       end loop;
@@ -445,28 +588,6 @@ package body Wav_Reader is
       return OK;
    end Read_Header;
 
-   ----------
-   -- Play --
-   ----------
-
-   procedure Play
-     (F    : Filesystem.File_Handle;
-      Info : WAV_Info)
-   is
-   begin
-      Controller.Set_Next (F, Info);
-   end Play;
-
-   ----------------
-   -- Is_Playing --
-   ----------------
-
-   function Is_Playing return Boolean
-   is
-   begin
-      return not Controller.Done_Playing;
-   end Is_Playing;
-
    --------------------
    -- Current_Volume --
    --------------------
@@ -497,15 +618,71 @@ package body Wav_Reader is
    end Current_Volume;
 
    ----------
+   -- Play --
+   ----------
+
+   procedure Play
+     (F : Filesystem.File_Handle)
+   is
+   begin
+      Audio_Controller.Set_Command (Play_Command);
+      File_Controller.Set_Next (F);
+
+      while State_Controller.State /= Playing loop
+         delay until Clock + Milliseconds (1);
+      end loop;
+   end Play;
+
+   ------------------------------
+   -- Get_Audio_State_Blocking --
+   ------------------------------
+
+   function Get_Audio_State_Blocking return Audio_State
+   is
+      State : Audio_State;
+   begin
+      State_Controller.Get_State (State);
+      return State;
+   end Get_Audio_State_Blocking;
+
+   -----------
+   -- Pause --
+   -----------
+
+   procedure Pause
+   is
+   begin
+      Audio_Controller.Set_Command (Pause_Command);
+
+      while State_Controller.State = Playing loop
+         delay until Clock + Milliseconds (1);
+      end loop;
+   end Pause;
+
+   ------------
+   -- Resume --
+   ------------
+
+   procedure Resume
+   is
+   begin
+      Audio_Controller.Set_Command (Resume_Command);
+
+      while State_Controller.State = Paused loop
+         delay until Clock + Milliseconds (1);
+      end loop;
+   end Resume;
+
+   ----------
    -- Stop --
    ----------
 
    procedure Stop
    is
    begin
-      Controller.Set_Done;
+      Audio_Controller.Set_Command (Stop_Command);
 
-      while not Controller.Done_Playing loop
+      while State_Controller.State /= Stopped loop
          delay until Clock + Milliseconds (1);
       end loop;
    end Stop;
