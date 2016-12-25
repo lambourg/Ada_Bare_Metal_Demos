@@ -862,7 +862,7 @@ package body Filesystem.FAT is
         (B2, Unsigned_16);
 
    begin
-      if Cluster < 2 or else Cluster >= FS.Num_Clusters then
+      if Cluster < 2 or else Cluster > FS.Num_Clusters + 2 then
          return 1;
       end if;
 
