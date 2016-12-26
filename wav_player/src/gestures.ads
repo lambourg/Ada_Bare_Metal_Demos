@@ -25,10 +25,8 @@ package Gestures is
 
    type Gesture_Id is
      (No_Gesture,
-      Move_Up,
-      Move_Right,
-      Move_Down,
-      Move_Left,
+      V_Scroll,
+      H_Scroll,
       Tap,
       Long_Tap);
 
@@ -55,11 +53,8 @@ package Gestures is
 
    No_Gesture_Data : constant Gesture_Data := (others => <>);
 
-   function Get_Touch_Points return Touch_Points;
+   type Gesture_CB is access procedure (New_Gesture : Gesture_Data);
 
-   function Get_Last_Gesture return Gesture_Data;
-
-   function Get_Gesture return Gesture_Data;
-   --  Blocking call
+   procedure Initialize (CB : not null Gesture_CB);
 
 end Gestures;

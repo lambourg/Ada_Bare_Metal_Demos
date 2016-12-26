@@ -24,12 +24,15 @@
 with System;
 with Ada.Real_Time;         use Ada.Real_Time;
 
+
 with HAL;                   use HAL;
 with HAL.Bitmap;            use HAL.Bitmap;
 
 with STM32.Board;           use STM32.Board;
 with STM32.DMA2D_Bitmap;
 with STM32.SDRAM;
+
+with SDCard;
 
 with Bitmapped_Drawing;
 
@@ -79,7 +82,8 @@ package body GUI is
    TAP_PREV_MIN_X    : constant := PREV_X - PLAY_PAUSE_SIZE / 2;
    TAP_PLAY_MIN_X    : constant := PLAY_X - PLAY_PAUSE_SIZE / 2;
    TAP_NEXT_MIN_X    : constant := NEXT_X - PLAY_PAUSE_SIZE / 2;
-   TAP_NEXT_MAX_X    : constant := NEXT_X + PREV_NEXT_SIZE + PLAY_PAUSE_SIZE / 2;
+   TAP_NEXT_MAX_X    : constant :=
+                         NEXT_X + PREV_NEXT_SIZE + PLAY_PAUSE_SIZE / 2;
 
    SELECTOR_Y        : constant := TITLE_Y + TITLE_HEIGHT + MARGIN / 2;
    SELECTOR_HEIGHT   : constant := CONTROLLER_Y - SELECTOR_Y - MARGIN;
@@ -164,7 +168,11 @@ package body GUI is
 
    --  Event management:
 
+   task SDCard_Detect with Priority => System.Max_Priority;
+
    procedure Dispatch_Gesture (Gesture : Gestures.Gesture_Data);
+   procedure On_Audio_Event (Event : Wav_Player.Audio_State);
+   procedure On_Gesture_Event (Event : Gestures.Gesture_Data);
 
    procedure On_Tap
      (Id : Selector_Id;
@@ -200,11 +208,12 @@ package body GUI is
 
    type Event_Queue is array (1 .. 4) of GUI_Event;
 
-   task Gesture_Worker with Priority => System.Priority'Last - 1;
-   task SDCard_Worker;
-   task Audio_Worker with Priority => System.Priority'Last - 1;
+   -------------------
+   -- Event_Manager --
+   -------------------
 
    protected Event_Manager is
+      pragma Interrupt_Priority;
       procedure Enqueue (Event : GUI_Event);
       entry Next_Event (Event : out GUI_Event);
    private
@@ -358,6 +367,7 @@ package body GUI is
 
    begin
       Selectors (Id).Buffer.Fill (Transparent);
+      Selectors (Id).Offset := 0;
 
       case Id is
          when Sel_Artist =>
@@ -528,8 +538,8 @@ package body GUI is
       elsif Selectors (Id).Offset < 0 then
          Selectors (Id).Offset := 0;
 
-      elsif Selectors (Id).Lines * SEL_FONT_H + 2 * MARGIN  - Selectors (Id).Offset <
-        SELECTOR_LIST_H
+      elsif Selectors (Id).Lines *
+        SEL_FONT_H + 2 * MARGIN  - Selectors (Id).Offset < SELECTOR_LIST_H
       then
          --  Make sure we don't scroll too far
          Selectors (Id).Offset :=
@@ -836,9 +846,7 @@ package body GUI is
    is
    begin
       case Gesture.Id is
-         when Move_Up =>
-            Selectors (Id).Offset := Selectors (Id).Offset + Gesture.Distance;
-         when Move_Down =>
+         when V_Scroll =>
             Selectors (Id).Offset := Selectors (Id).Offset - Gesture.Distance;
          when others =>
             return;
@@ -858,6 +866,10 @@ package body GUI is
    begin
       Display.Set_Background (64, 64, 64);
       Display.Get_Hidden_Buffer (1).Fill (Transparent);
+      Gestures.Initialize (On_Gesture_Event'Access);
+      Wav_Player.Initialize
+        (Volume   => 80,
+         State_CB => On_Audio_Event'Access);
       Set_Title ("Ada WAV Player");
       Set_Subtitle ("", 1);
       Set_Subtitle ("", 2);
@@ -917,16 +929,6 @@ package body GUI is
    is
       use type System.Address;
    begin
-      if Card_Present then
-         Set_Subtitle ("Card detected", 1, Light_Green);
-      else
-         Set_Subtitle ("No SDCard inserted", 1, Light_Coral);
-      end if;
-
-      Set_Subtitle ("", 2, Transparent);
-
-      Display.Update_Layer (1, True);
-
       if not Card_Present then
          Display.Get_Hidden_Buffer (2).Fill_Rect
            (Color  => Transparent,
@@ -975,70 +977,56 @@ package body GUI is
    end DB_Updated;
 
    --------------------
-   -- Gesture_Worker --
+   -- On_Audio_Event --
    --------------------
 
-   task body Gesture_Worker
+   procedure On_Audio_Event (Event : Wav_Player.Audio_State)
    is
-      Gesture : Gestures.Gesture_Data;
    begin
-      loop
-         Gesture := Gestures.Get_Gesture;
-         Event_Manager.Enqueue
-           ((Kind    => Gesture_Event,
-             Gesture => Gesture));
-      end loop;
-   end Gesture_Worker;
+      case Event is
+         when Paused =>
+            Event_Manager.Enqueue
+              ((Kind => Audio_Paused_Event));
+         when Stopped =>
+            Event_Manager.Enqueue
+              ((Kind => Audio_Finished_Event));
+         when Playing =>
+            Event_Manager.Enqueue
+              ((Kind  => Audio_Started_Event,
+                Track => Current_Track));
+      end case;
+   end On_Audio_Event;
+
+   ----------------------
+   -- On_Gesture_Event --
+   ----------------------
+
+   procedure On_Gesture_Event (Event : Gestures.Gesture_Data)
+   is
+   begin
+      Event_Manager.Enqueue
+        ((Kind    => Gesture_Event,
+          Gesture => Event));
+   end On_Gesture_Event;
 
    -------------------
-   -- SDCard_Worker --
+   -- SDCard_Detect --
    -------------------
 
-   task body SDCard_Worker
+   task body SDCard_Detect
    is
+      State : Boolean := SDCard_Device.Card_Present;
    begin
       loop
-         if not SDCard_Device.Card_Present then
-            loop
-               exit when SDCard_Device.Card_Present;
-               delay until Clock + Milliseconds (50);
-            end loop;
-         else
-            loop
-               exit when not SDCard_Device.Card_Present;
-               delay until Clock + Milliseconds (50);
-            end loop;
-         end if;
+         loop
+            exit when State /= SDCard_Device.Card_Present;
+            delay until Clock + Milliseconds (10);
+         end loop;
 
-         Event_Manager.Enqueue
-           ((Kind => Refresh_Event));
+         State := SDCard_Device.Card_Present;
+         Event_Manager.Enqueue ((Kind => Refresh_Event));
       end loop;
-   end SDCard_Worker;
-
-   ------------------
-   -- Audio_Worker --
-   ------------------
-
-   task body Audio_Worker
-   is
-      State : Audio_State;
-   begin
-      loop
-         State := Get_Audio_State_Blocking;
-         case State is
-            when Paused =>
-               Event_Manager.Enqueue
-                 ((Kind => Audio_Paused_Event));
-            when Stopped =>
-               Event_Manager.Enqueue
-                 ((Kind => Audio_Finished_Event));
-            when Playing =>
-               Event_Manager.Enqueue
-                 ((Kind => Audio_Started_Event,
-                   Track => Current_Track));
-         end case;
-      end loop;
-   end Audio_Worker;
+   end SDCard_Detect;
 
    -------------------
    -- Event_Manager --
@@ -1049,14 +1037,39 @@ package body GUI is
       procedure Enqueue (Event : GUI_Event)
       is
       begin
-         for J in The_Events'First .. Num_Events loop
-            if The_Events (J).Kind = Event.Kind then
-               The_Events (J .. Num_Events - 1) :=
-                 The_Events (J + 1 .. Num_Events);
-               The_Events (Num_Events) := Event;
-               return;
+         if Event.Kind = Gesture_Event then
+            --  Special handling for Gestures event: cumulate the distances
+            --  when successive events are received with the same gesture id.
+            --  If different gestures are received, just cancel the previous
+            --  one.
+            --  This prevents overflowing the events queue
+            for J in The_Events'First .. Num_Events loop
+               if The_Events (J).Kind = Event.Kind then
+                  if The_Events (J).Gesture.Id /= Event.Gesture.Id then
+                     The_Events (J .. Num_Events - 1) :=
+                       The_Events (J + 1 .. Num_Events);
+                     The_Events (Num_Events) := Event;
+                  else
+                     The_Events (J).Gesture.Distance :=
+                       The_Events (J).Gesture.Distance +
+                       Event.Gesture.Distance;
+                  end if;
+                  return;
+               end if;
+            end loop;
+
+         elsif Num_Events > 0 and then Event.Kind = Refresh_Event then
+            --  High priority: SDCard status change
+            if The_Events (The_Events'First).Kind /= Refresh_Event then
+               --  If not already the next event, make sure it is fetched next
+               The_Events (The_Events'First + 1 .. Num_Events + 1) :=
+                 The_Events (The_Events'First .. Num_Events);
+               The_Events (The_Events'First) := Event;
+               Num_Events := Num_Events + 1;
             end if;
-         end loop;
+
+            return;
+         end if;
 
          Num_Events := Num_Events + 1;
 
@@ -1114,7 +1127,7 @@ package body GUI is
                On_Tap (Sel_Id, Y);
             end;
 
-         elsif Gesture.Id in Move_Up .. Move_Down then
+         elsif Gesture.Id = V_Scroll then
             On_Move (Sel_Id, Gesture);
          end if;
 
@@ -1145,6 +1158,7 @@ package body GUI is
       State          : Audio_State := Stopped;
       Increment_Next : Boolean := True;
       No_Next        : Boolean := False;
+      Mounted        : Boolean := False;
 
    begin
       Event_Manager.Enqueue ((Kind => Refresh_Event));
@@ -1155,23 +1169,35 @@ package body GUI is
          case Event.Kind is
             when Refresh_Event =>
                if not SDCard_Device.Card_Present then
-                  --  In case the FS is still mounted: unmount it, else ignore the
-                  --  status anyway.
-                  Status := Unmount ("sdcard");
-                  Wav_DB.Reset_DB;
-                  DB_Updated (False);
+                  Set_Subtitle ("No SDCard inserted", 1, Light_Coral);
+                  Set_Subtitle ("", 2);
+                  Display.Update_Layer (1, True);
 
-               else
+                  if Mounted then
+                     --  In case the FS is still mounted: unmount it, else
+                     --  ignore the status anyway.
+                     Status := Unmount ("sdcard");
+                     Wav_DB.Reset_DB;
+                     DB_Updated (False);
+                     Mounted := False;
+                  end if;
+               elsif not Mounted then
+                  Set_Subtitle ("Reading the SDCard...", 1, Light_Green);
+                  Set_Subtitle ("", 2);
+                  Display.Update_Layer (1, True);
+
                   Status := Mount_Drive ("sdcard", SDCard_Device'Access);
 
                   if Status = No_MBR_Found then
-                     Display_Error ("Not an MBR partition system: " & Status'Img);
+                     Display_Error
+                       ("Not an MBR partition system: " & Status'Img);
 
                   elsif Status = No_Filesystem then
                      Display_Error ("No valid partition found");
 
                   elsif Status /= OK then
-                     Display_Error ("Cannot mount the sdcard: " & Status'Img);
+                     Display_Error
+                       ("Cannot mount the sdcard: " & Status'Img);
 
                   else
                      --  Fill the database with the content of the sd-card
@@ -1180,7 +1206,12 @@ package body GUI is
                      if Status /= OK then
                         Display_Error ("Error reading the sdcard");
                      else
+                        Mounted := True;
                         DB_Updated (True);
+
+                        Set_Subtitle ("SDCard ready", 1, Light_Green);
+                        Set_Subtitle ("", 2);
+                        Display.Update_Layer (1, True);
                      end if;
                   end if;
                end if;
@@ -1242,16 +1273,20 @@ package body GUI is
                State := Paused;
                Set_Controller_State
                  (Playing  => False,
-                  Has_Next => Play_Loop or else Wav_DB.Has_Next_Track (Sel, Current_Track),
-                  Has_Prev => Play_Loop or else Wav_DB.Has_Previous_Track (Sel, Current_Track));
+                  Has_Next => Play_Loop
+                    or else Wav_DB.Has_Next_Track (Sel, Current_Track),
+                  Has_Prev => Play_Loop
+                    or else Wav_DB.Has_Previous_Track (Sel, Current_Track));
                Display.Update_Layer (1, True);
 
             when Audio_Resumed_Event =>
                State := Playing;
                Set_Controller_State
                  (Playing  => True,
-                  Has_Next => Play_Loop or else Wav_DB.Has_Next_Track (Sel, Current_Track),
-                  Has_Prev => Play_Loop or else Wav_DB.Has_Previous_Track (Sel, Current_Track));
+                  Has_Next => Play_Loop
+                    or else Wav_DB.Has_Next_Track (Sel, Current_Track),
+                  Has_Prev => Play_Loop
+                    or else Wav_DB.Has_Previous_Track (Sel, Current_Track));
                Display.Update_Layer (1, True);
 
             when Audio_Started_Event =>
@@ -1267,8 +1302,10 @@ package body GUI is
                  (Track (Event.Track), 2, Light_Grey);
                Set_Controller_State
                  (Playing  => True,
-                  Has_Next => Play_Loop or else Wav_DB.Has_Next_Track (Sel, Current_Track),
-                  Has_Prev => Play_Loop or else Wav_DB.Has_Previous_Track (Sel, Current_Track));
+                  Has_Next => Play_Loop
+                    or else Wav_DB.Has_Next_Track (Sel, Current_Track),
+                  Has_Prev => Play_Loop
+                    or else Wav_DB.Has_Previous_Track (Sel, Current_Track));
                Display.Update_Layer (1, True);
 
             when Audio_Stopped_Event =>

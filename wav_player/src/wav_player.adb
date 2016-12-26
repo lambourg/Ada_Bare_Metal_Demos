@@ -53,7 +53,9 @@ package body Wav_Player is
 
    First_Byte_Left : Boolean := True;
 
-   RMS : Volume_Level := (others => 0.0);
+   On_New_State : State_Changed_CB := null;
+
+--     RMS : Volume_Level := (others => 0.0);
 
    type Audio_Command is
      (No_Command,
@@ -129,7 +131,6 @@ package body Wav_Player is
 
    --  The state controller keeps track of the state of the audio stream.
    protected State_Controller is
-      entry Get_State (State : out Audio_State);
       function State return Audio_State;
       procedure Set_State (State : Audio_State);
    private
@@ -245,17 +246,6 @@ package body Wav_Player is
 
    protected body State_Controller is
 
-      ---------------
-      -- Get_State --
-      ---------------
-
-      entry Get_State (State : out Audio_State) when New_State
-      is
-      begin
-         State := The_State;
-         New_State := False;
-      end Get_State;
-
       -----------
       -- State --
       -----------
@@ -275,6 +265,7 @@ package body Wav_Player is
       begin
          The_State := State;
          New_State := True;
+         On_New_State (State);
       end Set_State;
    end State_Controller;
 
@@ -337,14 +328,13 @@ package body Wav_Player is
    task body WAV_Player is
       W              : Wav_DB.Track_Id;
       File           : Filesystem.File_Handle;
-      F_Status       : Filesystem.Status_Code;
       Info           : Wav_Reader.WAV_Info;
       Idx            : Natural;
       Len            : Natural;
       Frq            : Audio_Frequency;
       Total          : Unsigned_32;
       WAV_Status     : Wav_Reader.WAV_Status_Code with Unreferenced;
-      Status         : Status_Code with Unreferenced;
+      Status         : Status_Code;
       Initial_Length : File_Size;
 
    begin
@@ -356,9 +346,9 @@ package body Wav_Player is
             File := Filesystem.VFS.Open
               (Path   => Wav_DB.Track_Path (W),
                Mode   => Filesystem.Read_Mode,
-               Status => F_Status);
+               Status => Status);
 
-            exit when F_Status = Filesystem.OK;
+            exit when Status = Filesystem.OK;
          end loop;
 
          --  Notify the playing state
@@ -425,6 +415,7 @@ package body Wav_Player is
 
                --  exit when we're read all of it.
                exit when Total >= Info.Data_Size or else Cnt = 0;
+               exit when Status /= OK;
 
                --  Check for any command from the audio controller is available
                Audio_Controller.Next_Command (Cmd);
@@ -463,10 +454,12 @@ package body Wav_Player is
    -- Initialize --
    ----------------
 
-   procedure Initialize (Volume : HAL.Audio.Audio_Volume)
+   procedure Initialize (Volume   : HAL.Audio.Audio_Volume;
+                         State_CB : not null State_Changed_CB)
    is
    begin
       STM32.Board.Initialize_LEDs;
+      On_New_State := State_CB;
 
       --  Initialize the audio ouptut. Choose a frequency random: will be
       --  refined upon feeding some WAV file.
@@ -523,18 +516,6 @@ package body Wav_Player is
          delay until Clock + Milliseconds (1);
       end loop;
    end Play;
-
-   ------------------------------
-   -- Get_Audio_State_Blocking --
-   ------------------------------
-
-   function Get_Audio_State_Blocking return Audio_State
-   is
-      State : Audio_State;
-   begin
-      State_Controller.Get_State (State);
-      return State;
-   end Get_Audio_State_Blocking;
 
    -----------
    -- Pause --

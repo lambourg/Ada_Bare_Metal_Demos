@@ -27,25 +27,26 @@ with Wav_DB;
 
 package Wav_Player is
 
+   type Audio_State is
+     (Playing,
+      Paused,
+      Stopped);
+
    type Volume_Level is record
       L : Float;
       R : Float;
    end record;
 
-   type Audio_State is
-     (Paused,
-      Stopped,
-      Playing);
+   type State_Changed_CB is access procedure (New_State : Audio_State);
 
-   procedure Initialize (Volume : HAL.Audio.Audio_Volume);
+   procedure Initialize
+     (Volume   : HAL.Audio.Audio_Volume;
+      State_CB : not null State_Changed_CB);
    --  Initializes the Audio device and internal structures.
 
    procedure Play
      (Track : Wav_DB.Track_Id);
    --  Plays the track.
-
-   function Get_Audio_State_Blocking return Audio_State;
-   --  Blocking call: retrieves the current Audio stream state.
 
    function Current_Volume return Volume_Level;
    --  Current Volume of the playing Buffer. This is calculated from an RMS

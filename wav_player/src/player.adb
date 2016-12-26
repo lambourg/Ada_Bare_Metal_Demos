@@ -33,7 +33,6 @@ with STM32.Board;                use STM32.Board;
 with STM32.SDRAM;                use STM32.SDRAM;
 
 with Filesystem;                 use Filesystem;
-with Wav_Player;
 
 procedure Player is
 
@@ -158,10 +157,8 @@ begin
       Calibrate         => True,
       Enable_Interrupts => True);
 
-   GUI.Initialize;
-
    SDCard_Device.Initialize;
-   Wav_Player.Initialize (Volume => 80);
+   GUI.Initialize;
 
    GUI.Main_Loop;
 end Player;
