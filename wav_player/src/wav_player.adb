@@ -51,11 +51,11 @@ package body Wav_Player is
    --  Make sure the buffer is 32-bit aligned to allow DMA transfers from the
    --  SDCard. The Audio layer requires 16-bit alignment.
 
-   First_Byte_Left : Boolean := True;
-
    On_New_State : State_Changed_CB := null;
+   --  User-defined callback to notify Audio stream state change
 
---     RMS : Volume_Level := (others => 0.0);
+   First_Byte_Left : Boolean := True;
+   RMS : Volume_Level := (others => 0.0);
 
    type Audio_Command is
      (No_Command,
@@ -63,6 +63,9 @@ package body Wav_Player is
       Resume_Command,
       Pause_Command,
       Stop_Command);
+
+   procedure Set_Volume
+     (Start, Last : Natural);
 
    ----------------------
    -- Buffer_Scheduler --
@@ -269,6 +272,36 @@ package body Wav_Player is
       end Set_State;
    end State_Controller;
 
+   ----------------
+   -- Set_Volume --
+   ----------------
+
+   procedure Set_Volume
+     (Start, Last : Natural)
+   is
+      Val   : Float;
+      RMS_L : Float := 0.0;
+      RMS_R : Float := 0.0;
+
+   begin
+      --  Update the Volume value with the RMS of the just read buffer
+      for J in Start .. Last loop
+         Val := Float (Buffer (J)) / 32768.0;
+
+         if (J mod 2) = (if First_Byte_Left then 0 else 1) then
+            RMS_L := RMS_L + Val ** 2;
+         else
+            RMS_R := RMS_R + Val ** 2;
+         end if;
+      end loop;
+
+      RMS_L := Sqrt (RMS_L / Float ((Last - Start + 1) / 2));
+      RMS_R := Sqrt (RMS_R / Float ((Last - Start + 1) / 2));
+
+      RMS := (L => RMS_L,
+              R => RMS_R);
+   end Set_Volume;
+
    ----------------------
    -- Buffer_Scheduler --
    ----------------------
@@ -412,6 +445,8 @@ package body Wav_Player is
                  (Buffer (Idx)'Address, Integer (Cnt));
                --  Done reading: turn off the led
                STM32.Board.Turn_Off (STM32.Board.Green);
+               --  Update the volume
+               Set_Volume (Idx, Idx + Len - 1);
                --  Keep track of the total amount of audio data read
                Total := Total + Unsigned_32 (Cnt / 2);
 
@@ -426,6 +461,7 @@ package body Wav_Player is
                   --  Pause the stream
                   STM32.Board.Audio_Device.Pause;
                   State_Controller.Set_State (Paused);
+                  RMS := (0.0, 0.0);
 
                   loop
                      --  and wait for a stop or a resume
@@ -480,27 +516,8 @@ package body Wav_Player is
 
    function Current_Volume return Volume_Level
    is
-      Val   : Float;
-      RMS_L : Float := 0.0;
-      RMS_R : Float := 0.0;
-
    begin
-      --  Update the Volume value with the RMS of the just read buffer
-      for J in Buffer'Range loop
-         Val := Float (Buffer (J)) / 32768.0;
-
-         if (J mod 2) = (if First_Byte_Left then 0 else 1) then
-            RMS_L := RMS_L + Val ** 2;
-         else
-            RMS_R := RMS_R + Val ** 2;
-         end if;
-      end loop;
-
-      RMS_L := Sqrt (RMS_L / Float (Buffer'Length / 2));
-      RMS_R := Sqrt (RMS_R / Float (Buffer'Length / 2));
-
-      return (L => RMS_L,
-              R => RMS_R);
+      return RMS;
    end Current_Volume;
 
    ----------

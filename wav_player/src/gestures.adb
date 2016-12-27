@@ -123,12 +123,6 @@ package body Gestures is
                end if;
             end loop;
 
---              Points_Manager.Set_Current_Points
---                ((1 => ((New_Points (0).X, New_Points (0).Y),
---                        New_Points (0) /= Null_Touch_State),
---                  2 => ((New_Points (1).X, New_Points (1).Y),
---                        New_Points (1) /= Null_Touch_State)));
-
             if New_Points (0) /= Null_Touch_State then
                if Start_Point = Null_Touch_State then
                   Start_Point := New_Points (0);

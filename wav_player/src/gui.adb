@@ -85,6 +85,10 @@ package body GUI is
    TAP_NEXT_MAX_X    : constant :=
                          NEXT_X + PREV_NEXT_SIZE + PLAY_PAUSE_SIZE / 2;
 
+   VUMETER_Y         : constant := CONTROLLER_Y + MARGIN;
+   VUMETER_X         : constant := TAP_NEXT_MAX_X + PLAY_PAUSE_SIZE / 2;
+   VUMETER_W         : constant := LCD_W - MARGIN - VUMETER_X;
+
    SELECTOR_Y        : constant := TITLE_Y + TITLE_HEIGHT + MARGIN / 2;
    SELECTOR_HEIGHT   : constant := CONTROLLER_Y - SELECTOR_Y - MARGIN;
    SELECTOR_TITLE_H  : constant := LCD_H / 17;
@@ -166,9 +170,16 @@ package body GUI is
    procedure On_Tap
      (Item : Controller_Item);
 
+   --  VU-Meter
+   subtype Percent is Natural range 0 .. 100;
+
+   procedure Display_Volume (Vol : Wav_Player.Volume_Level);
+   procedure Display_VUmeter (Vol : Percent; X, Y : Natural; W : Natural);
+
    --  Event management:
 
    task SDCard_Detect with Priority => System.Max_Priority;
+   task Periodic_Task;
 
    procedure Dispatch_Gesture (Gesture : Gestures.Gesture_Data);
    procedure On_Audio_Event (Event : Wav_Player.Audio_State);
@@ -193,7 +204,8 @@ package body GUI is
       Audio_Paused_Event,
       Audio_Resumed_Event,
       Audio_Stopped_Event,
-      Audio_Finished_Event);
+      Audio_Finished_Event,
+      Periodic_Event);
 
    type GUI_Event (Kind : GUI_Event_Kind := Refresh_Event) is record
       case Kind is
@@ -722,6 +734,112 @@ package body GUI is
       end case;
    end On_Tap;
 
+   Last_Volume : Wav_Player.Volume_Level := (0.0, 0.0);
+   Last_Time   : Time := Clock;
+
+   --------------------
+   -- Display_Volume --
+   --------------------
+
+   procedure Display_Volume (Vol : Wav_Player.Volume_Level)
+   is
+      W      : constant := VUMETER_W;
+      Now    : constant Time := Clock;
+      Tmp_L  : Float;
+      Tmp_R  : Float;
+      Dt     : Float;
+
+      function Update_Volume (Old    : Float;
+                              Target : Float) return Float;
+      --  Update the volume VUmeter level with a simple Proportional algo to
+      --  simulate an actual VUmeter device.
+
+      -------------------
+      -- Update_Volume --
+      -------------------
+
+      function Update_Volume (Old    : Float;
+                              Target : Float) return Float
+      is
+         P_Up   : constant Float := 10.0; -- level ups in ~1/10s from 0 to 100
+         P_Down : constant Float := 3.0;  -- level downs in ~1/3s from 100 to 0
+         D      : Float;
+         Res    : Float;
+
+      begin
+         D := (Target - Old) * Dt;
+         --  Use a proportional force to move the VUmeter value, then
+         --  clamp in the 0 .. 1 range
+         Res := Old + D * (if D > 0.0 then P_Up else P_Down);
+         Res := Float'Min (Float'Max (Res, 0.0), 1.0);
+         return Res;
+      end Update_Volume;
+
+   begin
+      Dt          := Float (To_Duration (Now - Last_Time));
+      Last_Time   := Now;
+
+      --  Some hand-crafted values so that the volume meter looks good:
+      --  What we have is the RMS of the signal, so this'll never reach
+      --  1.0. Let's increase the range to get a full range vu-meter.
+      Tmp_L := Update_Volume (Last_Volume.L, Vol.L * 2.5);
+      Tmp_R := Update_Volume (Last_Volume.R, Vol.R * 2.5);
+
+      Last_Volume := (L => Tmp_L,
+                      R => Tmp_R);
+
+      Display.Get_Hidden_Buffer (1).Fill_Rect
+        (Transparent,
+         X      => 20,
+         Y      => Display.Get_Height - 35,
+         Width  => W,
+         Height => 25);
+
+      Display_VUmeter
+        (Percent (Tmp_L * 100.0), VUMETER_X, VUMETER_Y, W);
+
+      Display_VUmeter
+        (Percent (Tmp_R * 100.0), VUMETER_X, VUMETER_Y + 15, W);
+
+      Display.Update_Layer (1, True);
+   end Display_Volume;
+
+   ---------------------
+   -- Display_VUmeter --
+   ---------------------
+
+   procedure Display_VUmeter (Vol : Percent; X, Y : Natural; W : Natural)
+   is
+      Steps  : constant := 15;
+      Step_W : constant Natural := W / Steps;
+      Color  : Bitmap_Color;
+   begin
+      Display.Get_Hidden_Buffer (1).Fill_Rect
+        (Transparent,
+         X      => X,
+         Y      => Y,
+         Width  => W,
+         Height => 10);
+
+      for J in 1 .. Steps loop
+         exit when Vol * 2 * Steps < 100 * 2 * J - 1;
+         if J <= (Steps / 2) then
+            Color := (255, 0, 192, 0);
+         elsif J <= (Steps * 5 / 6) then
+            Color := HAL.Bitmap.Orange;
+         else
+            Color := HAL.Bitmap.Red;
+         end if;
+
+         Display.Get_Hidden_Buffer (1).Fill_Rect
+           (Color,
+            X      => X + Step_W * (J - 1),
+            Y      => Y,
+            Width  => Step_W - 1,
+            Height => 10);
+      end loop;
+   end Display_VUmeter;
+
    ------------
    -- On_Tap --
    ------------
@@ -1029,6 +1147,19 @@ package body GUI is
    end SDCard_Detect;
 
    -------------------
+   -- Periodic_Task --
+   -------------------
+
+   task body Periodic_Task
+   is
+   begin
+      loop
+         delay until Clock + Milliseconds (20);
+         Event_Manager.Enqueue ((Kind => Periodic_Event));
+      end loop;
+   end Periodic_Task;
+
+   -------------------
    -- Event_Manager --
    -------------------
 
@@ -1037,7 +1168,14 @@ package body GUI is
       procedure Enqueue (Event : GUI_Event)
       is
       begin
-         if Event.Kind = Gesture_Event then
+         if Event.Kind = Periodic_Event then
+            for J in The_Events'First .. Num_Events loop
+               if The_Events (J).Kind = Periodic_Event then
+                  return;
+               end if;
+            end loop;
+
+         elsif Event.Kind = Gesture_Event then
             --  Special handling for Gestures event: cumulate the distances
             --  when successive events are received with the same gesture id.
             --  If different gestures are received, just cancel the previous
@@ -1215,6 +1353,9 @@ package body GUI is
                      end if;
                   end if;
                end if;
+
+            when Periodic_Event =>
+               Display_Volume (Wav_Player.Current_Volume);
 
             when Gesture_Event =>
                Dispatch_Gesture (Event.Gesture);
