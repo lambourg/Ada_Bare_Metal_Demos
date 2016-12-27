@@ -102,7 +102,7 @@ package body Wav_Reader is
          return Wrong_WAV_Format;
       end if;
 
-      loop
+      while F.Offset < F.Size loop
          Status := Read_Header (F, Header);
 
          if Status /= OK then
@@ -199,10 +199,11 @@ package body Wav_Reader is
 
          elsif Header.ID = "data" then
             Info.Data_Size := Header.Size;
-            exit;
+            Info.Data_Offset := F.Offset;
+            Status := Seek (F, Forward, File_Size (Info.Data_Size));
 
          else
-            return Unexpected_Section;
+            Status := Seek (F, Forward, File_Size (Header.Size));
          end if;
       end loop;
 

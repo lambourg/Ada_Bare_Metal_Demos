@@ -357,6 +357,8 @@ package body Wav_Player is
          --  Read the WAV informations to setup the stream
          WAV_Status := Wav_Reader.Read_Header (File, Info);
 
+         Status := Seek (File, From_Start, Info.Data_Offset);
+
          --  Find the most approaching supported frequency
          Frq := Audio_Frequency'First;
 
@@ -374,12 +376,12 @@ package body Wav_Player is
          --  Read a few data to make sure that next read operations are aligned
          --  on blocks: this speeds up significantly the read procedure
          Buffer_Scheduler.Next_Index (Idx, Len);
-         Initial_Length := (512 - (Offset (File) mod 512));
+         Initial_Length := (512 - (Info.Data_Offset mod 512));
          Status := File.Read
-           (Buffer (Idx + Len - Integer (Initial_Length / 2) - 1)'Address,
+           (Buffer (Idx + Len - 1 - Integer (Initial_Length / 2))'Address,
             Initial_Length);
          Cortex_M.Cache.Clean_DCache
-           (Buffer (Idx + Len - Integer (Initial_Length / 2) - 1)'Address,
+           (Buffer (Idx + Len - 1 - Integer (Initial_Length / 2))'Address,
             Integer (Initial_Length));
          Total := Unsigned_32 (Initial_Length / 2);
          --  Tell the volume meter which side is the first value of the buffer:

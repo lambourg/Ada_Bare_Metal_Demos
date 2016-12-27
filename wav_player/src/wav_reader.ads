@@ -70,6 +70,7 @@ package Wav_Reader is
       Audio_Description : Audio_Description_Block;
       Metadata          : Metadata_Info;
       Data_Size         : Unsigned_32;
+      Data_Offset       : Filesystem.File_Size;
    end record;
 
    function Read_Header
