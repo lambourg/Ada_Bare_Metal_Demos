@@ -58,10 +58,9 @@ package body GUI is
 
    MARGIN            : constant := LCD_H / 40;
 
-   TITLE_Y           : constant := MARGIN;
-   TITLE_HEIGHT      : constant := LCD_H / 7;
-   TITLE_FNT_H       : constant := TITLE_HEIGHT * 3 / 7;
-   SUBTITLE_FNT_H    : constant := TITLE_HEIGHT * 2 / 7;
+   TITLE_HEIGHT      : constant := LCD_H / 8;
+   TITLE_FNT_H       : constant := TITLE_HEIGHT / 2;
+   SUBTITLE_FNT_H    : constant := TITLE_HEIGHT * 4 / 9;
 
    CONTROLLER_HEIGHT : constant := LCD_H / 8;
    CONTROLLER_Y      : constant := LCD_H - MARGIN - CONTROLLER_HEIGHT;
@@ -89,7 +88,7 @@ package body GUI is
    VUMETER_X         : constant := TAP_NEXT_MAX_X + PLAY_PAUSE_SIZE / 2;
    VUMETER_W         : constant := LCD_W - MARGIN - VUMETER_X;
 
-   SELECTOR_Y        : constant := TITLE_Y + TITLE_HEIGHT + MARGIN / 2;
+   SELECTOR_Y        : constant := TITLE_HEIGHT;
    SELECTOR_HEIGHT   : constant := CONTROLLER_Y - SELECTOR_Y - MARGIN;
    SELECTOR_TITLE_H  : constant := LCD_H / 17;
    SELECTOR_LIST_H   : constant :=
@@ -107,6 +106,12 @@ package body GUI is
 
    Font              : constant Hershey_Fonts.Hershey_Font :=
                          Hershey_Fonts.Read (Hershey_Fonts.FuturaL.Font);
+
+   TITLE_STRING      : constant String := "Ada WAV Player";
+   TITLE_W           : constant Natural :=
+                         Hershey_Fonts.Strlen (TITLE_STRING,
+                                               Font,
+                                               TITLE_FNT_H) + 2 * MARGIN;
 
    Sel               : Wav_DB.Selection;
    Current_Track     : Wav_DB.Track_Id := No_Id;
@@ -126,8 +131,6 @@ package body GUI is
    Selectors         : array (Selector_Id) of Selector;
 
    type Subtitle_Line is range 1 .. 2;
-
-   procedure Set_Title (Msg : String);
 
    procedure Set_Subtitle
      (Msg   : String;
@@ -156,7 +159,6 @@ package body GUI is
       Previous,
       Next);
 
-   procedure Draw_Controller_Background;
    procedure Draw_Play (Color : HAL.Bitmap.Bitmap_Color);
    procedure Draw_Pause (Color : HAL.Bitmap.Bitmap_Color);
    procedure Draw_Next (Color : HAL.Bitmap.Bitmap_Color);
@@ -234,25 +236,6 @@ package body GUI is
       Num_Events : Natural := 0;
    end Event_Manager;
 
-   ---------------
-   -- Set_Title --
-   ---------------
-
-   procedure Set_Title (Msg : String)
-   is
-   begin
-      Display.Get_Hidden_Buffer (1).Fill_Rect
-        (Transparent, 0, TITLE_Y, Display.Get_Width, TITLE_FNT_H);
-      Bitmapped_Drawing.Draw_String
-        (Buffer     => Display.Get_Hidden_Buffer (1),
-         Area       => ((0, TITLE_Y), Display.Get_Width, TITLE_FNT_H),
-         Msg        => Msg,
-         Font       => Font,
-         Bold       => True,
-         Outline    => False,
-         Foreground => Light_Blue);
-   end Set_Title;
-
    ------------------
    -- Set_Subtitle --
    ------------------
@@ -262,16 +245,18 @@ package body GUI is
       Line  : Subtitle_Line;
       Color : HAL.Bitmap.Bitmap_Color := White)
    is
+      Y : constant := (TITLE_HEIGHT - 2 * SUBTITLE_FNT_H) / 2;
    begin
       Display.Get_Hidden_Buffer (1).Fill_Rect
         (Transparent,
-         0, TITLE_Y + TITLE_FNT_H + (if Line = 2 then SUBTITLE_FNT_H else 0),
-         Display.Get_Width, SUBTITLE_FNT_H);
+         TITLE_W, Y + (if Line = 2 then SUBTITLE_FNT_H else 0),
+         Display.Get_Width - TITLE_W, SUBTITLE_FNT_H);
       Bitmapped_Drawing.Draw_String
         (Buffer     => Display.Get_Hidden_Buffer (1),
-         Area       => ((0, TITLE_Y + TITLE_FNT_H +
-                              (if Line = 2 then SUBTITLE_FNT_H else 0)),
-                        Display.Get_Width, SUBTITLE_FNT_H),
+         Area       => ((TITLE_W,
+                         Y + (if Line = 2 then SUBTITLE_FNT_H else 0)),
+                        Display.Get_Width - TITLE_W,
+                        SUBTITLE_FNT_H),
          Msg        => Msg,
          Font       => Font,
          Bold       => True,
@@ -459,7 +444,7 @@ package body GUI is
                          when Sel_Track  => Track (DB_Id));
             begin
                Selectors (Id).Buffer.Fill_Rect
-                 (Color  => (if J = 1 then Transparent else Sky_Blue),
+                 (Color  => (if J = 1 then Transparent else Light_Steel_Blue),
                   X      => 0,
                   Y      => Y,
                   Width  => Selectors (Id).Buffer.Width,
@@ -471,7 +456,7 @@ package body GUI is
                   Font       => Font,
                   Height     => SEL_FONT_H,
                   Bold       => False,
-                  Foreground => (if J = 2 then Black else Dark_Grey),
+                  Foreground => (if J = 2 then Black else Gray),
                   Fast       => True);
             end;
          end if;
@@ -677,18 +662,6 @@ package body GUI is
         (Color, X, Y, Size);
    end Draw_Prev;
 
-   --------------------------------
-   -- Draw_Controller_Background --
-   --------------------------------
-
-   procedure Draw_Controller_Background
-   is
-   begin
-      Draw_Play (White);
-      Draw_Next (Grey);
-      Draw_Prev (Grey);
-   end Draw_Controller_Background;
-
    --------------------------
    -- Set_Controller_State --
    --------------------------
@@ -707,13 +680,13 @@ package body GUI is
          Height => PLAY_PAUSE_SIZE);
 
       if Playing then
-         Draw_Pause (White);
+         Draw_Pause (Dark_Slate_Gray);
       else
-         Draw_Play ((if Wav_DB.Is_Empty (Sel) then Grey else White));
+         Draw_Play ((if Wav_DB.Is_Empty (Sel) then Silver else Dark_Slate_Gray));
       end if;
 
-      Draw_Prev ((if Has_Prev then White else Grey));
-      Draw_Next ((if Has_Next then White else Grey));
+      Draw_Prev ((if Has_Prev then Dark_Slate_Gray else Silver));
+      Draw_Next ((if Has_Next then Dark_Slate_Gray else Silver));
    end Set_Controller_State;
 
    ------------
@@ -982,13 +955,24 @@ package body GUI is
    is
       W : Natural;
    begin
-      Display.Set_Background (64, 64, 64);
+      Display.Set_Background (230, 230, 230);
       Display.Get_Hidden_Buffer (1).Fill (Transparent);
       Gestures.Initialize (On_Gesture_Event'Access);
       Wav_Player.Initialize
         (Volume   => 80,
          State_CB => On_Audio_Event'Access);
-      Set_Title ("Ada WAV Player");
+
+--        Display.Get_Hidden_Buffer (1).Fill_Rect
+--          (Midnight_Blue, 0, 0, TITLE_W, TITLE_HEIGHT);
+      Bitmapped_Drawing.Draw_String
+        (Buffer     => Display.Get_Hidden_Buffer (1),
+         Area       => ((0, (TITLE_HEIGHT - TITLE_FNT_H) / 2),
+                        TITLE_W, TITLE_FNT_H),
+         Msg        => TITLE_STRING,
+         Font       => Font,
+         Bold       => True,
+         Outline    => True,
+         Foreground => Slate_Gray);
       Set_Subtitle ("", 1);
       Set_Subtitle ("", 2);
 
@@ -1011,7 +995,7 @@ package body GUI is
       end loop;
 
       Draw_Selector_Background;
-      Draw_Controller_Background;
+      Set_Controller_State (False, False, False);
       Display.Update_Layer (1, True);
    end Initialize;
 
@@ -1034,7 +1018,7 @@ package body GUI is
    procedure Display_Message (Msg : String)
    is
    begin
-      Set_Subtitle (Msg, 1, Light_Grey);
+      Set_Subtitle (Msg, 1, Dark_Slate_Gray);
       Set_Subtitle ("", 2, Black);
       Display.Update_Layer (1, True);
    end Display_Message;
@@ -1307,7 +1291,7 @@ package body GUI is
          case Event.Kind is
             when Refresh_Event =>
                if not SDCard_Device.Card_Present then
-                  Set_Subtitle ("No SDCard inserted", 1, Light_Coral);
+                  Set_Subtitle ("No SDCard inserted", 1, Indian_Red);
                   Set_Subtitle ("", 2);
                   Display.Update_Layer (1, True);
 
@@ -1320,7 +1304,7 @@ package body GUI is
                      Mounted := False;
                   end if;
                elsif not Mounted then
-                  Set_Subtitle ("Reading the SDCard...", 1, Light_Green);
+                  Set_Subtitle ("Reading the SDCard...", 1, Forest_Green);
                   Set_Subtitle ("", 2);
                   Display.Update_Layer (1, True);
 
@@ -1347,7 +1331,7 @@ package body GUI is
                         Mounted := True;
                         DB_Updated (True);
 
-                        Set_Subtitle ("SDCard ready", 1, Light_Green);
+                        Set_Subtitle ("SDCard ready", 1, Forest_Green);
                         Set_Subtitle ("", 2);
                         Display.Update_Layer (1, True);
                      end if;
@@ -1438,9 +1422,9 @@ package body GUI is
 
                Set_Subtitle
                  (Artist (Event.Track) & " - " & Album (Event.Track),
-                  1, Light_Grey);
+                  1, Dark_Slate_Gray);
                Set_Subtitle
-                 (Track (Event.Track), 2, Light_Grey);
+                 (Track (Event.Track), 2, Dark_Slate_Gray);
                Set_Controller_State
                  (Playing  => True,
                   Has_Next => Play_Loop
@@ -1456,10 +1440,8 @@ package body GUI is
                   Draw_Selector (Sel_Track);
                   Display.Update_Layer (2, True);
 
-                  Set_Subtitle
-                    ("", 1, Light_Grey);
-                  Set_Subtitle
-                    ("", 2, Light_Grey);
+                  Set_Subtitle ("", 1);
+                  Set_Subtitle ("", 2);
 
                   Set_Controller_State
                     (Playing  => False,

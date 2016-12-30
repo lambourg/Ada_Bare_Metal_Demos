@@ -62,6 +62,7 @@ package body Wav_Reader is
       is
          Num    : File_Size;
          Status : Status_Code;
+         Size   : Natural;
       begin
          Num := File_Size (H.Size);
          Status := Read (F, Buffer'Address, Num);
@@ -71,12 +72,23 @@ package body Wav_Reader is
             return;
          end if;
 
-         if H.Size - 1 > S'Length then
+         --  The string always ends with \0. Sometimes, it ends with a double
+         --  \0 to account for alignment (which is implicit in the "standard"
+         --  anyway, so this is useless, but hey, we don't control how people
+         --  interprete it).
+         --  We have to handle this case as well as ASCII.NUL is perfectly
+         --  allowed in Ada strings, but we want to get rid of them here.
+         if Buffer (Natural (H.Size) - 1) = ASCII.NUL then
+            Size := Natural (H.Size) - 2;
+         else
+            Size := Natural (H.Size) - 1;
+         end if;
+
+         if Size > S'Length then
             S := Buffer (1 .. S'Length);
          else
-            S (S'First .. S'First + Integer (H.Size - 2)) :=
-              Buffer (1 .. Natural (H.Size) - 1);
-            S (S'First + Integer (H.Size) - 1 .. S'Last) := (others => ' ');
+            S (S'First .. S'First + Size - 1) := Buffer (1 .. Size);
+            S (S'First + Size .. S'Last) := (others => ' ');
          end if;
       end Read_String;
 

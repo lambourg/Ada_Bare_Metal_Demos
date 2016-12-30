@@ -288,7 +288,9 @@ package body Wav_Player is
       for J in Start .. Last loop
          Val := Float (Buffer (J)) / 32768.0;
 
-         if (J mod 2) = (if First_Byte_Left then 0 else 1) then
+         if ((J mod 2) = 0 and then First_Byte_Left)
+           or else ((J mod 2) = 1 and then not First_Byte_Left)
+         then
             RMS_L := RMS_L + Val ** 2;
          else
             RMS_R := RMS_R + Val ** 2;
@@ -420,7 +422,7 @@ package body Wav_Player is
          --  Tell the volume meter which side is the first value of the buffer:
          --  Data is 16-bit aligned, so if we're not 32-bit aligned, we need
          --  to switch left/right
-         First_Byte_Left := (Initial_Length mod 4) = 0;
+         First_Byte_Left := (Info.Data_Offset mod 4) = 0;
 
          loop
             declare
