@@ -9,4 +9,5 @@
 *.a
 *.ci
 *.cswi
+.DS_Store
 *~

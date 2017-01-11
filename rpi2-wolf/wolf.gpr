@@ -1,0 +1,38 @@
+project Wolf is
+
+   for Languages use ("Ada");
+   for Main use ("wolf_demo.adb");
+
+   for Target use "arm-eabi";
+   for Runtime ("Ada") use "ravenscar-sfp-rpi2";
+
+   for Source_Dirs use ("src", "textures");
+   for Object_Dir use "obj";
+   for Exec_Dir use ".";
+
+   package Compiler is
+      for Switches ("Ada") use ("-O3", "-gnatyg-s", "-gnatwa.X");
+      for Switches ("framebuffer.adb") use ("-O0", "-gnatyg-s", "-gnatwa.X");
+      for Switches ("textures-colorada.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-colorstone.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-greyada.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-greystone.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-redada.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-redbrick.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-wood.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+   end Compiler;
+
+   package Linker is
+      for Default_Switches ("Ada") use
+        ("-Wl,--defsym=__stack_size=65536",
+         "-Wl,--gc-sections",
+         "-Wl,--print-memory-usage");
+   end Linker;
+end Wolf;
