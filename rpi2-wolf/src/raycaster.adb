@@ -471,7 +471,7 @@ package body Raycaster is
                Set_Pixel (Buf,
                           Col,
                           Screen_dY + Row,
-                          Unsigned_32 (Color (Tile, X, Y, not Side)));
+                          Unsigned_32 (Color (Tile, X, Y, Side)));
             end loop;
 
          else
@@ -494,7 +494,7 @@ package body Raycaster is
                      R_Next := ((Y + 1) * Scale) / Texture_Size - dY;
                   end if;
 
-                  The_Color := Unsigned_32 (Color (Tile, X, Y, not Side));
+                  The_Color := Unsigned_32 (Color (Tile, X, Y, Side));
 
                   for Y in Screen_dY + Row .. Screen_dY + R_Next - 1 loop
                      Buf.Set_Pixel (Col, Y, The_Color);
