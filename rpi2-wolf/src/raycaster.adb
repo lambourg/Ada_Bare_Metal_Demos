@@ -29,8 +29,8 @@ with Ada.Text_IO;                       use Ada.Text_IO;
 
 with Interfaces;                        use Interfaces;
 
-with Bitmap;                            use Bitmap;
-with Framebuffer;                       use Framebuffer;
+with HAL.Bitmap;                        use HAL.Bitmap;
+with RPi.Framebuffer;                   use RPi.Framebuffer;
 with Rpi_Board;                         use Rpi_Board;
 
 with Textures.Greystone;
@@ -88,7 +88,7 @@ package body Raycaster is
 
    procedure Draw_Column
      (Col  : Natural;
-      Buf  : Bitmap.Bitmap_Buffer'Class;
+      Buf  : HAL.Bitmap.Bitmap_Buffer'Class;
       Tmp  : in out Column_Type)
      with Inline_Always;
 
@@ -397,7 +397,7 @@ package body Raycaster is
 
    procedure Draw_Column
      (Col  : Natural;
-      Buf  : Bitmap.Bitmap_Buffer'Class;
+      Buf  : Bitmap_Buffer'Class;
       Tmp  : in out Column_Type)
    is
       Col_Pos  : Position := Current;
@@ -410,6 +410,12 @@ package body Raycaster is
       X, Y, dY : Natural;
       Screen_dY : Natural;
       The_Color : Unsigned_32;
+      BG_Hi     : constant Unsigned_32 :=
+                    Bitmap_Color_To_Word
+                      (Buf.Color_Mode, (255, others => 45));
+      BG_Lo     : constant Unsigned_32 :=
+                    Bitmap_Color_To_Word
+                      (Buf.Color_Mode, (255, others => 97));
 
    begin
       Col_Pos.Angle := Current.Angle + FOV_Vect (Col);
@@ -449,6 +455,15 @@ package body Raycaster is
         or else Tmp.Tile_X /= X
         or else Tmp.Tile_Scale /= Scale
       then
+         if Screen_dY > 0 then
+            for Y in 0 .. Screen_dY - 1 loop
+               Set_Pixel (Buf, Col, Y, BG_Hi);
+            end loop;
+            for Y in Screen_dY + Height .. LCD_H - 1 loop
+               Set_Pixel (Buf, Col, Y, BG_Lo);
+            end loop;
+         end if;
+
          if Scale <= Texture_Size then
             --  Shrinking case
             for Row in 0 .. Height - 1 loop
@@ -456,7 +471,7 @@ package body Raycaster is
                Set_Pixel (Buf,
                           Col,
                           Screen_dY + Row,
-                          Unsigned_32 (Color (Tile, X, Y, Side)));
+                          Unsigned_32 (Color (Tile, X, Y, not Side)));
             end loop;
 
          else
@@ -479,7 +494,7 @@ package body Raycaster is
                      R_Next := ((Y + 1) * Scale) / Texture_Size - dY;
                   end if;
 
-                  The_Color := Unsigned_32 (Color (Tile, X, Y, Side));
+                  The_Color := Unsigned_32 (Color (Tile, X, Y, not Side));
 
                   for Y in Screen_dY + Row .. Screen_dY + R_Next - 1 loop
                      Buf.Set_Pixel (Col, Y, The_Color);
@@ -497,12 +512,12 @@ package body Raycaster is
          --  Nothing changed, just copy back the previous column
          Copy_Rect (Src_Buffer  => Buf,
                     X_Src       => Tmp.Prev_Col,
-                    Y_Src       => Screen_dY,
+                    Y_Src       => 0,
                     Dst_Buffer  => Buf,
                     X_Dst       => Col,
-                    Y_Dst       => Screen_dY,
+                    Y_Dst       => 0,
                     Width       => 1,
-                    Height      => Height,
+                    Height      => LCD_H,
                     Synchronous => False);
       end if;
    end Draw_Column;
@@ -612,24 +627,9 @@ package body Raycaster is
 
    procedure Draw
    is
-      Buf : constant Bitmap.Bitmap_Buffer'Class :=
+      Buf : constant Bitmap_Buffer'Class :=
               Hidden_Framebuffer (Display);
    begin
-      Buf.Fill_Rect
-        (Color       => (255, others => 45),
-         X           => 0,
-         Y           => 0,
-         Width       => LCD_W,
-         Height      => LCD_H / 2,
-         Synchronous => False);
-      Buf.Fill_Rect
-        (Color       => (255, others => 97),
-         X           => 0,
-         Y           => LCD_H / 2,
-         Width       => LCD_W,
-         Height      => LCD_H / 2,
-         Synchronous => True);
-
       --  Lock the protected object
       Draw_Prot.Reset;
 

@@ -1,0 +1,45 @@
+with "../drivers/boards/rpi2";
+
+project Wolf_RPi2 is
+
+   for Target use "arm-eabi";
+   for Runtime ("Ada") use "ravenscar-sfp-rpi2";
+
+   for Languages use ("Ada");
+
+   for Source_Dirs use ("src", "textures");
+   for Object_Dir use "obj/rpi2";
+   for Exec_Dir use ".";
+
+   for Main use ("wolf_demo.adb");
+
+   package Builder is
+      for Executable ("wolf_demo.adb") use "wolf_demo_rpi2";
+   end Builder;
+
+   package Compiler is
+      for Switches ("Ada") use ("-O3", "-gnatyg-s", "-gnatwa.X");
+      for Switches ("textures-colorada.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-colorstone.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-greyada.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-greystone.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-redada.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-redbrick.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-wood.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+   end Compiler;
+
+   package Linker is
+      for Default_Switches ("Ada") use
+        ("-Wl,--defsym=__stack_size=65536",
+         "-Wl,--gc-sections",
+         "-Wl,--print-memory-usage");
+   end Linker;
+
+end Wolf_RPi2;

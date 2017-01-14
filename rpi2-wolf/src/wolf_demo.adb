@@ -24,7 +24,8 @@
 with Ada.Real_Time;         use Ada.Real_Time;
 with Ada.Text_IO;           use Ada.Text_IO;
 
-with Framebuffer;           use Framebuffer;
+with RPi.Framebuffer;       use RPi.Framebuffer;
+
 with Raycaster;             use Raycaster;
 with Rpi_Board;             use Rpi_Board;
 with Cos;                   use Cos;
