@@ -87,8 +87,11 @@ package body Raycaster is
      with Component_Size => 16, Alignment => 32;
 
    Tmp_1       : aliased Column_Type;
+   Height_1    : aliased Natural := LCD_H;
    Tmp_2       : aliased Column_Type;
+   Height_2    : aliased Natural := LCD_H;
    Tmp         : access Column_Type := Tmp_2'Access;
+   Prev_Height : access Natural := Height_2'Access;
    Tmp_Buf     : DMA2D_Bitmap_Buffer;
 
    Prev_X      : Natural := 0;
@@ -97,6 +100,9 @@ package body Raycaster is
    pragma Linker_Section (Prev_Scale, ".ccmdata");
    Prev_Tile   : Cell := Empty;
    pragma Linker_Section (Prev_Tile, ".ccmdata");
+
+   Last        : Time := Clock;
+   FPS         : Natural := 0;
 
    function To_Unit_Vector (Angle : Degree) return Vector with Inline_Always;
    function Sin (Angle : Degree) return Float with Inline_Always;
@@ -398,6 +404,14 @@ package body Raycaster is
       Height   : Natural;
       Scale    : Natural;
       X, Y, dY : Natural;
+      Top      : Natural;
+      BG_Hi    : constant Unsigned_32 :=
+                   HAL.Bitmap.Bitmap_Color_To_Word
+                     (Buf.Color_Mode, (255, others => 45));
+      BG_Lo    : constant Unsigned_32 :=
+                   HAL.Bitmap.Bitmap_Color_To_Word
+                     (Buf.Color_Mode, (255, others => 97));
+      Prev_Top : Natural;
 
    begin
       Col_Pos.Angle := Current.Angle + FOV_Vect (Col);
@@ -425,6 +439,8 @@ package body Raycaster is
          Height := Scale;
       end if;
 
+      Top := (LCD_H - Height) / 2;
+
       if Height = 0 then
          return;
       end if;
@@ -439,17 +455,27 @@ package body Raycaster is
          --  while transfering
          if Tmp = Tmp_1'Access then
             Tmp := Tmp_2'Access;
+            Prev_Height := Height_2'Access;
          else
             Tmp := Tmp_1'Access;
+            Prev_Height := Height_1'Access;
          end if;
 
          Tmp_Buf.Addr := Tmp.all'Address;
+
+         --  Fill top and bottom
+         if Prev_Height.all > Height then
+            Prev_Top := (LCD_H - Prev_Height.all) / 2;
+            Tmp (Prev_Top .. Top - 1) := (others => Unsigned_16 (BG_Hi));
+            Tmp (Top + Height .. Prev_Top + Prev_Height.all - 1) :=
+              (others => Unsigned_16 (BG_Lo));
+         end if;
 
          if Scale <= Texture_Size then
             --  Shrinking case
             for Row in 0 .. Height - 1 loop
                Y := (Row + dY) * Texture_Size / Scale;
-               Tmp (Row) := Color (Tile, X, Y, Side);
+               Tmp (Top + Row) := Color (Tile, X, Y, Side);
             end loop;
 
          else
@@ -474,7 +500,7 @@ package body Raycaster is
                      R_Next := ((Y + 1) * Scale) / Texture_Size - dY;
                   end if;
 
-                  Tmp (Row .. R_Next - 1) := (others => Col);
+                  Tmp (Top + Row .. Top + R_Next - 1) := (others => Col);
                end loop;
             end;
          end if;
@@ -484,6 +510,7 @@ package body Raycaster is
          Prev_Scale := Scale;
          Prev_X := X;
          Prev_Tile := Tile;
+         Prev_Height.all := Height;
       end if;
 
       --  Start next column as soon as possible, so don't wait for the DMA
@@ -494,9 +521,9 @@ package body Raycaster is
          Y_Src       => 0,
          Dst_Buffer  => Buf,
          X_Dst       => Col,
-         Y_Dst       => (LCD_H - Height) / 2,
+         Y_Dst       => 0,
          Width       => 1,
-         Height      => Height,
+         Height      => LCD_H,
          Synchronous => False);
    end Draw_Column;
 
@@ -504,29 +531,11 @@ package body Raycaster is
    -- Draw --
    ----------
 
-   Last : Time := Clock;
-   FPS  : Natural := 0;
-
    procedure Draw
    is
-      Buf : constant HAL.Bitmap.Bitmap_Buffer'Class :=
-              Display.Get_Hidden_Buffer (1);
       FG  : constant HAL.Bitmap.Bitmap_Buffer'Class :=
               Display.Get_Hidden_Buffer (2);
    begin
-      Buf.Fill_Rect
-        (Color  => (255, others => 45),
-         X      => 0,
-         Y      => 0,
-         Width  => LCD_W,
-         Height => LCD_H / 2);
-      Buf.Fill_Rect
-        (Color  => (255, others => 97),
-         X      => 0,
-         Y      => LCD_H / 2,
-         Width  => LCD_W,
-         Height => LCD_H / 2);
-
       for X in FOV_Vect'Range loop
          Draw_Column (X);
       end loop;
