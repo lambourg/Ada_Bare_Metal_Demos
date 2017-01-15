@@ -163,8 +163,7 @@ is
    end Do_Turn;
 
 begin
-   Initialize (Display, Display_Width, Display_Height);
-   Set_Alpha_Mode (Display, Alpha_Channel_Enabled);
+   Initialize (Display, Display_Width, Display_Height, 2);
    Put_Line ("Display initialized");
 
    Put_Line ("Initializing the tables...");
