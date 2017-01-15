@@ -2,9 +2,9 @@ with "../drivers/hal/config";
 
 project Common is
 
-   type LOADER_Type is
-      ("RAM", "ROM");
-   LOADER : LOADER_Type := external ("LOADER", "ROM");
+--     type LOADER_Type is
+--        ("RAM", "ROM");
+--     LOADER : LOADER_Type := external ("LOADER", "ROM");
 
    for Languages use ("Ada");
    for Target use "arm-eabi";
@@ -21,12 +21,9 @@ project Common is
    end Linker;
 
    package Ide is
-      for Gnat use "arm-eabi-gnat";
-      for Gnatlist use "arm-eabi-gnatls";
-      for Debugger_Command use "arm-eabi-gdb";
       for Program_Host use "localhost:4242";
       for Communication_Protocol use "remote";
-      for Connection_Tool use "st-util";
+      for Connection_Tool use "st-util"; --  ??? Not true anymore.
    end Ide;
 
 end Common;
