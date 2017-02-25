@@ -3602,7 +3602,6 @@ package Cos is
                   9.99976E-01,
                   9.99986E-01,
                   9.99994E-01,
-                  9.99998E-01)
-   with Linker_Section => ".ccmdata";
+                  9.99998E-01);
 
 end Cos;
