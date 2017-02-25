@@ -17,15 +17,15 @@ def gen_ada(filename, pkg, dest):
                 for j in range(width):
                     a = line[4 * j + 3] >> 7
                     if a == 0:
-                        r = 0
-                        g = 0
-                        b = 0
+                        cols.append ('16#0000#')
                     else:
                         r = line[4 * j] >> 3
                         g = line[4 * j + 1] >> 2
                         b = line[4 * j + 2] >> 3
-                    val = (r << 11) | (g << 5) | b
-                    cols.append ('16#%x#' % val)
+
+                        val = (r << 11) | (g << 5) | b
+                        cols.append ('16#%x#' % val)
+
                 if n_line == 1:
                     fout.write("      (")
                 else:
@@ -36,7 +36,6 @@ def gen_ada(filename, pkg, dest):
                 else:
                     fout.write(",\n")
                 n_line += 1
-            fout.write('   pragma Linker_Section (Bmp, ".ccmdata");\n')
         fout.write("\nend %s;\n" % pkg)
 
 def is_png(pics, fname):
@@ -48,6 +47,6 @@ files = [f for f in os.listdir(pics) if is_png(pics, f)]
 for f in files:
     pkg, _ = os.path.splitext(os.path.basename(f))
     src = os.path.join('..', 'pics', 'textures-%s.ads' % pkg)
-    pkg = "Textures.%s" % pkg[0].upper() + pkg[1:]
+    pkg = "Textures.%s" % pkg.title()
     print src
     gen_ada(os.path.join(pics, f), pkg, src)
