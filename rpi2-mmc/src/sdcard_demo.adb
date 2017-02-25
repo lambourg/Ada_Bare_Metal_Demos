@@ -21,7 +21,6 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Ada.Unchecked_Conversion;
 with Interfaces;                 use Interfaces;
 
 with Ada.Real_Time;
@@ -34,8 +33,8 @@ with Filesystem.VFS;             use Filesystem.VFS;
 
 with HAL;                        use HAL;
 with HAL.Block_Drivers;
-with HAL.SDCard;                 use HAL.SDCard;
-with MMC;                        use MMC;
+with SDMMC_Init;                 use SDMMC_Init;
+with RPi.SDMMC;                  use RPi.SDMMC;
 
 with SDCard_Buf;
 
@@ -44,6 +43,18 @@ with Hex_Images; use Hex_Images;
 procedure SDCard_Demo
 is
    procedure Display_Current_Dir (Path : String);
+   procedure Disp_Capacity;
+   procedure Disp_CID (CID : Card_Identification_Data_Register);
+   procedure Disp_Info;
+   procedure Disp_CSD (CSD : Card_Specific_Data_Register);
+   procedure Disp_SCR (SCR : SDCard_Configuration_Register);
+   procedure Do_Speed;
+   procedure Do_Read (Blk : Unsigned_64);
+   procedure Do_List;
+   procedure Do_Info;
+   procedure Do_Mbr;
+
+   function Setup return Boolean;
 
    -------------------------
    -- Display_Current_Dir --
@@ -82,7 +93,12 @@ is
 
    SD_Card_Info  : Card_Information;
 
-   procedure Disp_Capacity is
+   -------------------
+   -- Disp_Capacity --
+   -------------------
+
+   procedure Disp_Capacity
+   is
       Units : constant array (Natural range <>) of Character :=
         (' ', 'k', 'M', 'G', 'T');
       Capacity      : Unsigned_64;
@@ -104,7 +120,12 @@ is
       end loop;
    end Disp_Capacity;
 
-   procedure Disp_Info is
+   ---------------
+   -- Disp_Info --
+   ---------------
+
+   procedure Disp_Info
+   is
    begin
       case SD_Card_Info.Card_Type is
          when STD_Capacity_SD_Card_V1_1 =>
@@ -126,7 +147,12 @@ is
       end case;
    end Disp_Info;
 
-   procedure Disp_CID (CID : Card_Identification_Data_Register) is
+   --------------
+   -- Disp_CID --
+   --------------
+
+   procedure Disp_CID (CID : Card_Identification_Data_Register)
+   is
    begin
       Put ("MID: ");
       Put (Hex2 (CID.Manufacturer_ID));
@@ -149,6 +175,10 @@ is
       Put (Manufacturing_Month'Image (CID.Manufacturing_Date.Month));
       New_Line;
    end Disp_CID;
+
+   --------------
+   -- Disp_CSD --
+   --------------
 
    procedure Disp_CSD (CSD : Card_Specific_Data_Register) is
    begin
@@ -189,6 +219,10 @@ is
       end loop;
       New_Line;
    end Disp_CSD;
+
+   --------------
+   -- Disp_SCR --
+   --------------
 
    procedure Disp_SCR (SCR : SDCard_Configuration_Register) is
    begin
@@ -238,6 +272,10 @@ is
       New_Line;
    end Disp_SCR;
 
+   -----------
+   -- Setup --
+   -----------
+
    function Setup return Boolean is
       SD_Status     : SD_Error;
    begin
@@ -249,6 +287,10 @@ is
 
       return True;
    end Setup;
+
+   -------------
+   -- Do_List --
+   -------------
 
    procedure Do_List is
       Status : Filesystem.Status_Code;
@@ -271,6 +313,10 @@ is
          Status := Unmount ("sdcard");
       end if;
    end Do_List;
+
+   -------------
+   -- Do_Info --
+   -------------
 
    procedure Do_Info is
       SD_Status     : SD_Error;
@@ -296,6 +342,10 @@ is
       Disp_Info;
       Disp_Capacity;
    end Do_Info;
+
+   --------------
+   -- Do_Speed --
+   --------------
 
    procedure Do_Speed is
       use Ada.Real_Time;
@@ -328,7 +378,12 @@ is
       Put_Line ("MB/s");
    end Do_Speed;
 
-   procedure Do_Read (Blk : Unsigned_64) is
+   -------------
+   -- Do_Read --
+   -------------
+
+   procedure Do_Read (Blk : Unsigned_64)
+   is
    begin
       if not Setup then
          return;
@@ -374,6 +429,10 @@ is
       end;
    end Do_Read;
 
+   ------------
+   -- Do_Mbr --
+   ------------
+
    procedure Do_Mbr is
       MBR : Master_Boot_Record;
    begin
@@ -401,6 +460,7 @@ is
    end Do_Mbr;
 
    C : Character;
+
 begin
    loop
       Put_Line ("Menu:");
@@ -438,8 +498,8 @@ begin
                Do_Mbr;
                exit;
             when 'd' =>
-               MMC.Use_DMA := not MMC.Use_DMA;
-               if MMC.Use_DMA then
+               RPi.SDMMC.Use_DMA := not RPi.SDMMC.Use_DMA;
+               if RPi.SDMMC.Use_DMA then
                   Put_Line ("DMA enabled");
                else
                   Put_Line ("DMA disabled");

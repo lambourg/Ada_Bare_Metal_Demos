@@ -1,10 +1,10 @@
-with "../drivers/boards/rpi2";
+with "../drivers/boards/rpi3";
 with "../common/common";
 
-project SDCard_RPI2 is
+project SDCard_RPI3 is
 
-   for Target use "arm-eabi";
-   for Runtime ("Ada") use "ravenscar-sfp-rpi2";
+   for Target use "aarch64-elf";
+   for Runtime ("Ada") use "ravenscar-sfp-rpi3";
 
    for Object_Dir use "obj";
 
@@ -15,4 +15,4 @@ project SDCard_RPI2 is
 
    package Compiler renames Common.Compiler;
 
-end SDCard_RPI2;
+end SDCard_RPI3;
