@@ -378,8 +378,8 @@ package body Raycaster is
       Middle : constant := LCD_H / 2;
 
       Scale  : constant Unsigned_32 :=
-                 (if Y <= Middle then Unsigned_32 (LCD_H - 2 * Y)
-                  else Unsigned_32 (2 * Y - LCD_H));
+                 (if Y <= Middle then Unsigned_32 (Middle - Y) * 2
+                  else Unsigned_32 (Y - Middle) * 3);
       Dist   : constant Unsigned_32 :=
                  (if Scale = 0 then Mult_Values'Last + 1
                   else Unsigned_32 (128.0 * Height_Multiplier) / Scale);
