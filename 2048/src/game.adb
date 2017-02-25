@@ -30,6 +30,7 @@ with STM32.RNG;
 with STM32.Board;          use STM32.Board;
 with STM32.SDRAM;          use STM32.SDRAM;
 with Malloc;               use Malloc;
+with Gestures;             use Gestures;
 
 with STM32.DMA2D_Bitmap;   use STM32.DMA2D_Bitmap;
 
@@ -538,41 +539,37 @@ package body Game is
    -- Treat_Touch --
    -----------------
 
-   procedure Treat_Touch (V : TP.Touch_Vector)
+   Previous : Gesture_Id;
+
+   procedure Treat_Touch (G : Gestures.Gesture_Data)
    is
-      Vx       : constant Integer := V.End_Point.X - V.Start_Point.X;
-      Vy       : constant Integer := V.End_Point.Y - V.Start_Point.Y;
-      Vx2      : constant Integer := Vx * Vx;
-      Vy2      : constant Integer := Vy * Vy;
-
    begin
-
-      if Vx2 > 500 or else Vy2 > 500 then
-         if Vx2 > Vy2 then
-            --  left or right
-            if Vx > 0 then
-               if Can_Move (Right) then
-                  Move (Right);
-               end if;
-            else
-               if Can_Move (Left) then
-                  Move (Left);
-               end if;
-            end if;
-         else
-            --  top or down
-            if Vy > 0 then
-               if Can_Move (Down) then
+      if not Sliding and then Previous = No_Gesture then
+         case G.Id is
+            when V_Scroll =>
+               if G.Cumulated > 0 then
                   Move (Down);
-               end if;
-            else
-               if Can_Move (Up) then
+               else
                   Move (Up);
                end if;
-            end if;
-         end if;
+               Previous := V_Scroll;
+
+            when H_Scroll =>
+               if G.Cumulated > 0 then
+                  Move (Right);
+               else
+                  Move (Left);
+               end if;
+               Previous := H_Scroll;
+
+            when others =>
+               null;
+         end case;
+      end if;
+
+      if G.Id = No_Gesture then
+         Previous := No_Gesture;
       end if;
    end Treat_Touch;
-
 
 end Game;

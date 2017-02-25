@@ -28,7 +28,7 @@ with Hershey_Fonts.FuturaL; use Hershey_Fonts;
 
 with Grid; use Grid;
 with Ada.Real_Time;    use Ada.Real_Time;
-with TP;
+with Gestures;
 
 package Game is
 
@@ -52,8 +52,7 @@ package Game is
    --   procedure Move (Direction : Direction_E);
    procedure Move (Direction : Direction_E);
    function Is_Sliding return Boolean;
-   procedure Treat_Touch (V : TP.Touch_Vector);
-
+   procedure Treat_Touch (G : Gestures.Gesture_Data);
 
 private
 
@@ -75,12 +74,9 @@ private
      range 0 .. Integer (Size'Range_Length * Size'Range_Length - 1);
    type Moving_Cells_A is array (Moving_Cells_Index_T) of Moving_Cell_T;
 
-
    Moving_Cells : Moving_Cells_A;
-
 
    Sliding                : Boolean := False;
    Slide_Start_Time       : Time;
-
 
 end Game;

@@ -32,7 +32,6 @@ with Ada.Real_Time;         use Ada.Real_Time;
 with Ada.Text_IO;
 
 with STM32.Board;           use STM32.Board;
-with STM32.User_Button;     use STM32.User_Button;
 with STM32.SDRAM;           use STM32.SDRAM;
 
 with HAL.Bitmap;            use HAL.Bitmap;
@@ -41,7 +40,7 @@ with HAL.Framebuffer;
 with Bitmapped_Drawing;     use Bitmapped_Drawing;
 with Framebuffer_Helper;    use Framebuffer_Helper;
 
-with TP;
+with Gestures;
 
 with Game;
 with Grid;
@@ -50,20 +49,19 @@ with Status;
 
 procedure Demo_2048 is
    Period           : constant Time_Span := Milliseconds (10);
-   Do_Slide         : Boolean := False;
+   Do_Gesture       : Boolean := False;
    Do_Toggle_Solver : Boolean := False;
-   Slide_Vect       : TP.Touch_Vector;
+   Gesture          : Gestures.Gesture_Data;
 
-   procedure On_Autoplay_Clicked (X, Y : Natural);
-   procedure On_Slide (Vect : TP.Touch_Vector);
+   procedure On_Autoplay_Clicked;
+   procedure On_Slide (New_Gesture : Gestures.Gesture_Data);
 
    -------------------------
    -- On_Autoplay_Clicked --
    -------------------------
 
-   procedure On_Autoplay_Clicked (X, Y : Natural)
+   procedure On_Autoplay_Clicked
    is
-      pragma Unreferenced (X, Y);
    begin
       Solver.Solver_Enabled := not Solver.Solver_Enabled;
       Do_Toggle_Solver := True;
@@ -73,15 +71,28 @@ procedure Demo_2048 is
    -- On_Slide --
    --------------
 
-   procedure On_Slide (Vect : TP.Touch_Vector) is
+   procedure On_Slide (New_Gesture : Gestures.Gesture_Data)
+   is
+      use Gestures;
+      Area : constant Rect := Status.Get_Autoplay_Btn_Area;
+      G    : Gestures.Gesture_Data renames New_Gesture;
+
    begin
-      if not Game.Is_Sliding and then not Solver.Solver_Enabled then
-         Slide_Vect := Vect;
-         Do_Slide := True;
+      if G.Id = Gestures.Tap
+        and then G.Origin.X >= Area.Position.X
+        and then G.Origin.Y >= Area.Position.Y
+        and then G.Origin.X <= Area.Position.X + Area.Width
+        and then G.Origin.Y <= Area.Position.Y + Area.Height
+      then
+         On_Autoplay_Clicked;
+      elsif not Game.Is_Sliding then
+         Gesture := New_Gesture;
+         Do_Gesture := True;
       end if;
    end On_Slide;
 
    Status_Layer_Area : constant Rect := Game.Get_Status_Area;
+   use Gestures;
 
 begin
    Ada.Text_IO.Put_Line ("Ready");
@@ -94,11 +105,11 @@ begin
                              Status_Layer_Area.Position.Y,
                              Status_Layer_Area.Width,
                              Status_Layer_Area.Height);
-   Touch_Panel.Initialize;
+   Touch_Panel.Initialize (Enable_Interrupts => True);
 
    Display.Set_Background (240, 240, 240);
 
-   STM32.User_Button.Initialize;
+--     STM32.User_Button.Initialize;
 
    Game.Init;
    Game.Start;
@@ -110,14 +121,11 @@ begin
 
    if Status.Has_Buttons then
       Status.Set_Autoplay (Solver.Solver_Enabled);
-      TP.Add_Button_Area
-        (Status.Get_Autoplay_Btn_Area,
-         On_Autoplay_Clicked'Unrestricted_Access);
    end if;
 
    Update_All_Layers;
 
-   TP.Set_Slide_Callback (On_Slide'Unrestricted_Access);
+   Gestures.Initialize (On_Slide'Unrestricted_Access);
 
    Solver.Init_Solver;
 
@@ -138,9 +146,9 @@ begin
          end loop;
       end if;
 
-      if STM32.User_Button.Has_Been_Pressed then
-         On_Autoplay_Clicked (0, 0);
-      end if;
+--        if STM32.User_Button.Has_Been_Pressed then
+--           On_Autoplay_Clicked;
+--        end if;
 
       if Do_Toggle_Solver then
          Status.Set_Autoplay (Solver.Solver_Enabled);
@@ -175,10 +183,14 @@ begin
                   Game.Start;
                end if;
          end case;
+      end if;
 
-      elsif Do_Slide then
-         Game.Treat_Touch (Slide_Vect);
-         Do_Slide := False;
+      if Do_Gesture then
+         if not Solver.Solver_Enabled then
+            Game.Treat_Touch (Gesture);
+         end if;
+
+         Do_Gesture := False;
       end if;
 
       delay until Clock + Period;
