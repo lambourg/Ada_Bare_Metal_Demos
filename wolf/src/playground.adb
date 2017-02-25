@@ -21,19 +21,45 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with STM32.Board;     use STM32.Board;
+package body Playground is
 
-package Raycaster is
+   ----------------
+   -- Uncompress --
+   ----------------
 
-   Actual_Height : constant Natural :=
-                     (if LCD_Natural_Width > LCD_Natural_Height
-                      then LCD_Natural_Height
-                      else LCD_Natural_Width);
-   Height_Multiplier : constant Float :=
-                         Float (Actual_Height) / 1.5;
+   procedure Uncompress is
+      Val : Cell;
+      C   : Character;
+   begin
+      for Y in Map'Range (1) loop
+         for X in Map'Range (2) loop
+            C := Compressed (Y) (X);
+            case C is
+               when ' ' =>
+                  Val := 0;
+               when '1' =>
+                  Val := 1;
+               when '2' =>
+                  Val := 2;
+               when '3' =>
+                  Val := 3;
+               when '4' =>
+                  Val := 4;
+               when '5' =>
+                  Val := 5;
+               when '6' =>
+                  Val := 6;
+               when '7' =>
+                  Val := 7;
+               when '8' =>
+                  Val := 8;
+               when others =>
+                  raise Constraint_Error;
+            end case;
 
-   procedure Initialize_Tables;
+            Map (Y, X) := Val;
+         end loop;
+      end loop;
+   end Uncompress;
 
-   procedure Draw;
-
-end Raycaster;
+end Playground;

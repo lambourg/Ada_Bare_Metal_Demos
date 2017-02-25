@@ -1,7 +1,7 @@
 ------------------------------------------------------------------------------
 --                        Bareboard drivers examples                        --
 --                                                                          --
---                     Copyright (C) 2015-2016, AdaCore                     --
+--                     Copyright (C) 2015-2017, AdaCore                     --
 --                                                                          --
 -- This library is free software;  you can redistribute it and/or modify it --
 -- under terms of the  GNU General Public License  as published by the Free --
@@ -35,6 +35,7 @@ with STM32.SDRAM;
 with HAL.Framebuffer;       use HAL.Framebuffer;
 with HAL.Bitmap;            use HAL.Bitmap;
 
+with Playground;            use Playground;
 with Raycaster;             use Raycaster;
 with Cos;                   use Cos;
 
@@ -51,50 +52,6 @@ with Cos;                   use Cos;
 
 procedure Wolf_Demo
 is
-   type Movement_Kind is (Move_To, Turn_Left, Turn_Right);
-
-   type Movement (Kind : Movement_Kind := Move_To) is record
-      case Kind is
-         when Move_To =>
-            X, Y : Float;
-         when Turn_Left | Turn_Right =>
-            Angle : Degree;
-      end case;
-   end record;
-
-   Path : constant array (Natural range <>) of Movement :=
-                 ((Move_To, 2.5, 2.5),
-                  (Turn_Right, 0),
-                  (Move_To, 5.5, 2.5),
-                  (Turn_Left, 450),
-                  (Move_To, 6.5, 1.5),
-                  (Turn_Right, 0),
-                  (Move_To, 14.5, 1.5),
-                  (Turn_Right, 2700),
-                  (Move_To, 14.5, 3.5),
-                  (Turn_Right, 1800),
-                  (Move_To, 9.5, 3.5),
-                  (Turn_Left, 2700),
-                  (Move_To, 9.5, 6.5),
-                  (Turn_Left, 3150),
-                  (Move_To, 11.5, 8.5),
-                  (Turn_Left, 0),
-                  (Move_To, 15.1, 8.5),
-                  (Turn_Left, 1800),
-                  (Move_To, 1.5, 8.5),
-                  (Turn_Right, 900),
-                  (Move_To, 1.5, 6.5),
-                  (Turn_Right, 0),
-                  (Move_To, 4.5, 6.5),
-                  (Turn_Left, 450),
-                  (Move_To, 5.5, 5.5),
-                  (Turn_Left, 900),
-                  (Move_To, 5.5, 2.5),
-                  (Turn_Left, 1800),
-                  (Move_To, 2.5, 2.5),
-                  (Turn_Left, 2700),
-                  (Move_To, 2.5, 3.5),
-                  (Turn_Right, 900));
 
    Start : Time;
 
@@ -174,17 +131,17 @@ begin
    Display.Initialize (HAL.Framebuffer.Landscape, HAL.Framebuffer.Polling);
    Display.Initialize_Layer
      (Layer  => 1,
-      Mode   => HAL.Bitmap.RGB_565);
-   Display.Initialize_Layer
-     (Layer  => 2,
-      Mode   => HAL.Bitmap.ARGB_1555,
-      X      => 0,
-      Y      => 10,
-      Width  => 16 * 12,
-      Height => 28);
+      Mode   => Playground.Color_Mode);
+--     Display.Initialize_Layer
+--       (Layer  => 2,
+--        Mode   => HAL.Bitmap.ARGB_1555,
+--        X      => 0,
+--        Y      => 10,
+--        Width  => 16 * 12,
+--        Height => 28);
 
    Display.Get_Hidden_Buffer (1).Fill (0);
-   Display.Get_Hidden_Buffer (2).Fill (0);
+--     Display.Get_Hidden_Buffer (2).Fill (0);
    Display.Update_Layers;
 
    Initialize_Tables;

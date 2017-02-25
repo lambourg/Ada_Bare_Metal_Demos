@@ -1,0 +1,41 @@
+project Wolf_Common extends "../common/common.gpr" is
+
+   for Source_Dirs use ("src", "pics");
+
+   package Compiler is
+      for Default_Switches ("Ada") use Common.Compiler'Default_Switches ("Ada");
+      for Switches ("textures-colorada.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-colorada_dark.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-colorstone.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-colorstone_dark.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-greyada.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-greyada_dark.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-greystone.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-greystone_dark.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-redada.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-redada_dark.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-redbrick.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-redbrick_dark.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-wood.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-wood_dark.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-woodada.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-woodada_dark.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+   end Compiler;
+
+end Wolf_Common;

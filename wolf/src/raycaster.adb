@@ -1,7 +1,7 @@
 ------------------------------------------------------------------------------
 --                        Bareboard drivers examples                        --
 --                                                                          --
---                     Copyright (C) 2015-2016, AdaCore                     --
+--                     Copyright (C) 2015-2017, AdaCore                     --
 --                                                                          --
 -- This library is free software;  you can redistribute it and/or modify it --
 -- under terms of the  GNU General Public License  as published by the Free --
@@ -21,9 +21,7 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Ada.Real_Time;                     use Ada.Real_Time;
 with Ada.Unchecked_Conversion;
-with Ada.Text_IO;
 
 with Interfaces;                        use Interfaces;
 
@@ -31,17 +29,29 @@ with Cortex_M.Cache;
 
 with STM32.User_Button;
 with STM32.DMA2D_Bitmap;                use STM32.DMA2D_Bitmap;
+with Cortex_M.FPU;
 
 with HAL.Bitmap;                        use HAL.Bitmap;
-with Bitmapped_Drawing;
-with BMP_Fonts;
+--  with Bitmapped_Drawing;
+--  with BMP_Fonts;
 
+with Playground;                        use Playground;
 with Textures.Greystone;
 with Textures.Greyada;
+with Textures.Greystone_Dark;
+with Textures.Greyada_Dark;
 with Textures.Redbrick;
 with Textures.Redada;
+with Textures.Redbrick_Dark;
+with Textures.Redada_Dark;
 with Textures.Colorstone;
 with Textures.Colorada;
+with Textures.Colorstone_Dark;
+with Textures.Colorada_Dark;
+with Textures.Wood;
+with Textures.Woodada;
+with Textures.Wood_Dark;
+with Textures.Woodada_Dark;
 
 with Cos;                               use Cos;
 
@@ -64,53 +74,46 @@ package body Raycaster is
 
    Texture_Size : constant := Textures.Texture'Length (1);
 
-   ColorAda_Dark   : Textures.Texture;
-   pragma Linker_Section (ColorAda_Dark, ".ccmdata");
-   ColorStone_Dark : Textures.Texture;
-   pragma Linker_Section (ColorStone_Dark, ".ccmdata");
-   GreyAda_Dark    : Textures.Texture;
-   pragma Linker_Section (GreyAda_Dark, ".ccmdata");
-   GreyStone_Dark  : Textures.Texture;
-   pragma Linker_Section (GreyStone_Dark, ".ccmdata");
-   RedAda_Dark     : Textures.Texture;
-   pragma Linker_Section (RedAda_Dark, ".ccmdata");
-   RedBrick_Dark   : Textures.Texture;
-   pragma Linker_Section (RedBrick_Dark, ".ccmdata");
-
    --  1 pixel = 1/10 degree
    FOV_Vect : array (0 .. LCD_W - 1) of Degree;
-   pragma Linker_Section (FOV_Vect, ".ccmdata");
 
    Sin_Table : array (Cos_Table'Range) of Float;
 
    type Column_Type is array (0 .. LCD_H - 1) of Unsigned_16
      with Component_Size => 16, Alignment => 32;
 
+   Bg          : Column_Type;
    Tmp_1       : aliased Column_Type;
    Height_1    : aliased Natural := LCD_H;
+   Top_1       : aliased Integer := 0;
    Tmp_2       : aliased Column_Type;
    Height_2    : aliased Natural := LCD_H;
+   Top_2       : aliased Integer := 0;
    Tmp         : access Column_Type := Tmp_2'Access;
    Prev_Height : access Natural := Height_2'Access;
+   Prev_Top    : access Integer := Top_2'Access;
    Tmp_Buf     : DMA2D_Bitmap_Buffer;
 
    Prev_X      : Natural := 0;
-   pragma Linker_Section (Prev_X, ".ccmdata");
    Prev_Scale  : Natural := 0;
-   pragma Linker_Section (Prev_Scale, ".ccmdata");
    Prev_Tile   : Cell := Empty;
-   pragma Linker_Section (Prev_Tile, ".ccmdata");
 
-   Last        : Time := Clock;
-   FPS         : Natural := 0;
+   --  Fog support
+   Max_Fog_Dist  : constant := 18; --  Maximum fog distance
+   subtype Fog_Distance is Unsigned_32 range 0 .. Max_Fog_Dist * 128;
+   Grey_Values   : array (Fog_Distance) of Unsigned_32;
+   Mult_Values   : array (Fog_Distance) of Unsigned_32;
+   Fog_Precision : constant := 1000;
+
+--     Last        : Time := Clock;
+--     FPS         : Natural := 0;
 
    function To_Unit_Vector (Angle : Degree) return Vector with Inline_Always;
    function Sin (Angle : Degree) return Float with Inline_Always;
    function Tan (Angle : Degree) return Float with Inline_Always;
    function Arctan (F : Float) return Degree with Inline_Always;
 
-   procedure Draw_Column (Col  : Natural)
-     with Inline_Always;
+   procedure Draw_Column (Col  : Natural);
 
    procedure Distance
      (Pos      : Position;
@@ -120,13 +123,15 @@ package body Raycaster is
       Tile     : out Cell)
      with Inline_Always;
 
-   function Darken (Col : Unsigned_16) return Unsigned_16 is
-     (Shift_Right (Col and 2#11110_111110_11110#, 1)) with Inline_Always;
+   function Bg_Color
+     (Base : Unsigned_16;
+      Y    : Natural) return Unsigned_16
+     with Inline_Always;
 
    function Color
-     (Tile   : Cell;
-      X, Y   : Natural;
-      Darken : Boolean) return Unsigned_16
+     (Tile     : Cell;
+      X, Y     : Natural;
+      Darken   : Boolean) return Unsigned_16
      with Inline_Always, Pure_Function;
 
    --------------------
@@ -210,15 +215,30 @@ package body Raycaster is
          Color_Mode => Display.Get_Color_Mode (1),
          Swapped    => Display.Is_Swapped);
 
-      for Y in Textures.Texture'Range (1) loop
-         for X in Textures.Texture'Range (2) loop
-            ColorAda_Dark (Y, X) := Darken (Textures.Colorada.Bmp (Y, X));
-            ColorStone_Dark (Y, X) := Darken (Textures.Colorstone.Bmp (Y, X));
-            GreyAda_Dark (Y, X) := Darken (Textures.Greyada.Bmp (Y, X));
-            GreyStone_Dark (Y, X) := Darken (Textures.Greystone.Bmp (Y, X));
-            RedAda_Dark (Y, X) := Darken (Textures.Redada.Bmp (Y, X));
-            RedBrick_Dark (Y, X) := Darken (Textures.Redbrick.Bmp (Y, X));
-         end loop;
+      Playground.Uncompress;
+
+      for J in Grey_Values'Range loop
+         declare
+            use Cortex_M.FPU;
+
+            Dist  : constant Float := Float (J) / 128.0;
+            Ratio : constant Float :=
+                      (if Dist >= Float (Max_Fog_Dist) then 1.0
+                       else Sqrt (Dist / Float (Max_Fog_Dist)));
+         begin
+            Grey_Values (J) := Unsigned_32 (48.0 * Ratio * Float (Fog_Precision));
+            Mult_Values (J) := Unsigned_32 ((1.0 - Ratio) * Float (Fog_Precision));
+         end;
+      end loop;
+
+      for J in Bg'Range loop
+         if J < LCD_H / 2 then
+            Bg (J) := Bg_Color
+              (Unsigned_16 (Bitmap_Color_To_Word (Color_Mode, Sky_Blue)),
+               J);
+         else
+            Bg (J) := Bg_Color (2#00010_000100_00010#, J);
+         end if;
       end loop;
    end Initialize_Tables;
 
@@ -335,14 +355,66 @@ package body Raycaster is
       Dist := Cos_Table (Pos.Angle - Current.Angle) * Dist;
    end Distance;
 
-      -----------
-      -- Color --
-      -----------
+   --------------
+   -- Bg_Color --
+   --------------
+
+   function Bg_Color
+     (Base : Unsigned_16;
+      Y    : Natural) return Unsigned_16
+   is
+      type RGB_Color is record
+         R : HAL.UInt5;
+         G : HAL.UInt6;
+         B : HAL.UInt5;
+      end record with Size => 16;
+
+      for RGB_Color use record
+         R at 0 range 11 .. 15;
+         G at 0 range 5 .. 10;
+         B at 0 range 0 .. 4;
+      end record;
+
+      Middle : constant := LCD_H / 2;
+
+      Scale  : constant Unsigned_32 :=
+                 (if Y <= Middle then Unsigned_32 (LCD_H - 2 * Y)
+                  else Unsigned_32 (2 * Y - LCD_H));
+      Dist   : constant Unsigned_32 :=
+                 (if Scale = 0 then Mult_Values'Last + 1
+                  else Unsigned_32 (128.0 * Height_Multiplier) / Scale);
+      Col    : Unsigned_16;
+      RGB    : RGB_Color with Address => Col'Address;
+      R      : HAL.UInt5;
+      G      : HAL.UInt6;
+      B      : HAL.UInt5;
+      use HAL;
+
+   begin
+      if Dist in Mult_Values'Range then
+         Col := Base;
+         R  := UInt5 ((Mult_Values (Dist) * Unsigned_32 (RGB.R) +
+                        Shift_Right (Grey_Values (Dist), 1)) / Fog_Precision);
+         G  := UInt6 ((Mult_Values (Dist) * Unsigned_32 (RGB.G) +
+                        Grey_Values (Dist)) / Fog_Precision);
+         B  := UInt5 ((Mult_Values (Dist) * Unsigned_32 (RGB.B) +
+                        Shift_Right (Grey_Values (Dist), 1)) / Fog_Precision);
+         RGB := (R, G, B);
+      else
+         RGB := (24, 48, 24);
+      end if;
+
+      return Col;
+   end Bg_Color;
+
+   -----------
+   -- Color --
+   -----------
 
    function Color
-     (Tile   : Cell;
-      X, Y   : Natural;
-      Darken : Boolean) return Unsigned_16
+     (Tile     : Cell;
+      X, Y     : Natural;
+      Darken   : Boolean) return Unsigned_16
    is
    begin
       case Tile is
@@ -352,37 +424,49 @@ package body Raycaster is
             if not Darken then
                return Textures.Greystone.Bmp (Y, X);
             else
-               return GreyStone_Dark (Y, X);
+               return Textures.Greystone_Dark.Bmp (Y, X);
             end if;
          when Grey_Ada =>
             if not Darken then
                return Textures.Greyada.Bmp (Y, X);
             else
-               return GreyAda_Dark (Y, X);
+               return Textures.Greyada_Dark.Bmp (Y, X);
             end if;
          when Red_Brick =>
             if not Darken then
                return Textures.Redbrick.Bmp (Y, X);
             else
-               return RedBrick_Dark (Y, X);
+               return Textures.Redbrick_Dark.Bmp (Y, X);
             end if;
          when Red_Ada =>
             if not Darken then
                return Textures.Redada.Bmp (Y, X);
             else
-               return RedAda_Dark (Y, X);
+               return Textures.Redada_Dark.Bmp (Y, X);
             end if;
          when Color_Stone =>
             if not Darken then
                return Textures.Colorstone.Bmp (Y, X);
             else
-               return ColorStone_Dark (Y, X);
+               return Textures.Colorstone_Dark.Bmp (Y, X);
             end if;
          when Color_Ada =>
             if not Darken then
                return Textures.Colorada.Bmp (Y, X);
             else
-               return ColorAda_Dark (Y, X);
+               return Textures.Colorada_Dark.Bmp (Y, X);
+            end if;
+         when Wood =>
+            if not Darken then
+               return Textures.Wood.Bmp (Y, X);
+            else
+               return Textures.Wood_Dark.Bmp (Y, X);
+            end if;
+         when Wood_Ada =>
+            if not Darken then
+               return Textures.Woodada.Bmp (Y, X);
+            else
+               return Textures.Woodada_Dark.Bmp (Y, X);
             end if;
       end case;
    end Color;
@@ -403,15 +487,13 @@ package body Raycaster is
       Side     : Boolean;
       Height   : Natural;
       Scale    : Natural;
+
+      Virt_Top : Integer;
+      Scr_Top  : Integer;
+
       X, Y, dY : Natural;
-      Top      : Natural;
-      BG_Hi    : constant Unsigned_32 :=
-                   HAL.Bitmap.Bitmap_Color_To_Word
-                     (Buf.Color_Mode, (255, others => 45));
-      BG_Lo    : constant Unsigned_32 :=
-                   HAL.Bitmap.Bitmap_Color_To_Word
-                     (Buf.Color_Mode, (255, others => 97));
-      Prev_Top : Natural;
+--        Top      : Natural;
+--        Prev_Top : Natural;
 
    begin
       Col_Pos.Angle := Current.Angle + FOV_Vect (Col);
@@ -430,16 +512,22 @@ package body Raycaster is
         (Float'Floor (Off * Float (Textures.Texture'Length (2))));
 
       Scale := Natural (Height_Multiplier / Dist);
+      Virt_Top := (LCD_H - Scale * 4 / 3) / 2;
 
-      if Scale > LCD_H then
-         dY := (Scale - LCD_H) / 2;
-         Height := LCD_H;
+      if Virt_Top < 0 then
+         dY := -Virt_Top;
+         Scr_Top := 0;
+
+         if Virt_Top + Scale >= LCD_H then
+            Height := LCD_H;
+         else
+            Height := Virt_Top + Scale;
+         end if;
       else
          dY := 0;
+         Scr_Top := Virt_Top;
          Height := Scale;
       end if;
-
-      Top := (LCD_H - Height) / 2;
 
       if Height = 0 then
          return;
@@ -456,54 +544,117 @@ package body Raycaster is
          if Tmp = Tmp_1'Access then
             Tmp := Tmp_2'Access;
             Prev_Height := Height_2'Access;
+            Prev_Top    := Top_2'Access;
          else
             Tmp := Tmp_1'Access;
             Prev_Height := Height_1'Access;
+            Prev_Top    := Top_1'Access;
          end if;
 
          Tmp_Buf.Addr := Tmp.all'Address;
 
          --  Fill top and bottom
          if Prev_Height.all > Height then
-            Prev_Top := (LCD_H - Prev_Height.all) / 2;
-            Tmp (Prev_Top .. Top - 1) := (others => Unsigned_16 (BG_Hi));
-            Tmp (Top + Height .. Prev_Top + Prev_Height.all - 1) :=
-              (others => Unsigned_16 (BG_Lo));
+            if Scr_Top > 0 then
+               Tmp (Prev_Top.all .. Scr_Top - 1) :=
+                 Bg (Prev_Top.all .. Scr_Top - 1);
+            end if;
+
+            if Scr_Top + Height < LCD_H then
+               Tmp (Scr_Top + Height .. Prev_Top.all + Prev_Height.all - 1) :=
+                 Bg (Scr_Top + Height .. Prev_Top.all + Prev_Height.all - 1);
+            end if;
          end if;
 
-         if Scale <= Texture_Size then
-            --  Shrinking case
-            for Row in 0 .. Height - 1 loop
-               Y := (Row + dY) * Texture_Size / Scale;
-               Tmp (Top + Row) := Color (Tile, X, Y, Side);
-            end loop;
+         declare
+            Col      : Unsigned_16;
+            type RGB_Color is record
+               R : HAL.UInt5;
+               G : HAL.UInt6;
+               B : HAL.UInt5;
+            end record with Size => 16;
 
-         else
-            --  Expanding case
-            declare
-               Y0      : constant Natural :=
-                           (dY * Texture_Size) / Scale;
-               Y1      : constant Natural :=
-                           ((Height - 1 + dY) * Texture_Size) / Scale;
-               Row     : Natural;
-               R_Next  : Natural := 0;
-               Col     : Unsigned_16;
+            for RGB_Color use record
+               R at 0 range 11 .. 15;
+               G at 0 range 5 .. 10;
+               B at 0 range 0 .. 4;
+            end record;
 
-            begin
-               for Y in Y0 .. Y1 loop
-                  Col := Color (Tile, X, Y, Side);
-                  Row := R_Next;
+            Grey     : constant HAL.UInt6 := 48;
+            Grey5    : constant HAL.UInt5 := 24;
+            RGB      : RGB_Color with Address => Col'Address;
+            Distn    : constant Unsigned_32 := Unsigned_32 (128.0 * Dist);
 
-                  if Y = Y1 then
-                     R_Next := Height;
+         begin
+            if Distn not in Mult_Values'Range then
+               RGB := (Grey5, Grey, Grey5);
+               Tmp (Scr_Top .. Scr_Top + Height) := (others => Col);
+
+            else
+               declare
+                  procedure Handle_Mist;
+
+                  M   : constant Unsigned_32 := Mult_Values (Distn);
+                  Gr6 : constant Unsigned_32 := Grey_Values (Distn);
+                  Gr5 : constant Unsigned_32 := Shift_Right (Gr6, 1);
+
+                  procedure Handle_Mist
+                  is
+                     use HAL;
+                  begin
+                     RGB :=
+                       (UInt5 ((M * Unsigned_32 (RGB.R) + Gr5) / Fog_Precision),
+                        UInt6 ((M * Unsigned_32 (RGB.G) + Gr6) / Fog_Precision),
+                        UInt5 ((M * Unsigned_32 (RGB.B) + Gr5) / Fog_Precision));
+                  end Handle_Mist;
+
+               begin
+
+                  if Scale <= Texture_Size then
+                     --  Shrinking case
+                     for Row in 0 .. Height - 1 loop
+                        Y := ((Row + dY) * Texture_Size + Scale / 2) / Scale;
+                        Col := Color (Tile, X, Y, Side);
+                        Handle_Mist;
+                        Tmp (Scr_Top + Row) := Col;
+                     end loop;
+
                   else
-                     R_Next := ((Y + 1) * Scale) / Texture_Size - dY;
-                  end if;
+                     --  Expanding case
+                     declare
+                        Y0      : constant Natural :=
+                                    (dY * Texture_Size) / Scale;
+                        Y1      : constant Natural :=
+                                    ((Height - 1 + dY) * Texture_Size) / Scale;
+                        Row     : Natural;
+                        R_Next  : Natural := 0;
 
-                  Tmp (Top + Row .. Top + R_Next - 1) := (others => Col);
-               end loop;
-            end;
-         end if;
+                     begin
+                        for Y in Y0 .. Y1 loop
+                           Col := Color (Tile, X, Y, Side);
+                           Handle_Mist;
+                           Row := R_Next;
+
+                           if Y = Y1 then
+                              R_Next := Height;
+                           else
+                              R_Next := ((Y + 1) * Scale) / Texture_Size - dY;
+                           end if;
+
+                           if R_Next + Scr_Top >= LCD_H then
+                              Tmp (Scr_Top + Row .. LCD_H - 1) :=
+                                (others => Col);
+                              exit;
+                           else
+                              Tmp (Scr_Top + Row .. Scr_Top + R_Next - 1) :=
+                                (others => Col);
+                           end if;
+                        end loop;
+                     end;
+                  end if;
+               end;
+            end if;
+         end;
 
          Cortex_M.Cache.Clean_DCache (Tmp (0)'Address, Height * 2);
 
@@ -511,6 +662,7 @@ package body Raycaster is
          Prev_X := X;
          Prev_Tile := Tile;
          Prev_Height.all := Height;
+         Prev_Top.all := Scr_Top;
       end if;
 
       --  Start next column as soon as possible, so don't wait for the DMA
@@ -533,32 +685,35 @@ package body Raycaster is
 
    procedure Draw
    is
-      FG  : constant HAL.Bitmap.Bitmap_Buffer'Class :=
-              Display.Get_Hidden_Buffer (2);
    begin
       for X in FOV_Vect'Range loop
          Draw_Column (X);
       end loop;
 
-      FPS := FPS + 1;
-
-      if Clock - Last > Milliseconds (500) then
-         Ada.Text_IO.Put_Line (Natural'Image (FPS * 2) & " fps");
-         FG.Fill (Transparent);
-         Cortex_M.Cache.Invalidate_DCache (FG.Addr, FG.Buffer_Size);
-         Bitmapped_Drawing.Draw_String
-           (Buffer     => FG,
-            Start      => (0, 0),
-            Msg        => Natural'Image (FPS * 2) & " fps",
-            Font       => BMP_Fonts.Font12x12,
-            Foreground => HAL.Bitmap.White,
-            Background => HAL.Bitmap.Transparent);
-         FPS := 0;
-         Last := Clock;
-         Display.Update_Layers;
-      else
-         Display.Update_Layer (1);
-      end if;
+--        FPS := FPS + 1;
+--
+--        if Clock - Last > Milliseconds (500) then
+--           declare
+--              FG  : constant HAL.Bitmap.Bitmap_Buffer'Class :=
+--                      Display.Get_Hidden_Buffer (2);
+--           begin
+--              FG.Fill (Transparent);
+--              Cortex_M.Cache.Invalidate_DCache (FG.Addr, FG.Buffer_Size);
+--              Bitmapped_Drawing.Draw_String
+--                (Buffer     => FG,
+--                 Start      => (0, 0),
+--                 Msg        => Natural'Image (FPS * 2) & " fps",
+--                 Font       => BMP_Fonts.Font12x12,
+--                 Foreground => HAL.Bitmap.White,
+--                 Background => HAL.Bitmap.Transparent);
+--              Display.Update_Layers;
+--           end;
+--
+--           FPS := 0;
+--           Last := Clock;
+--        else
+      Display.Update_Layer (1);
+--        end if;
 
       if STM32.User_Button.Has_Been_Pressed then
          while not STM32.User_Button.Has_Been_Pressed loop
