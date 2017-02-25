@@ -1,18 +1,20 @@
-SFP_DEMOS=balls conway fractals sdcard wav_player wolf
+SFP_DEMOS=balls conway fractals sdcard wav_player wolf rpi2-wolf rpi2-mmc
 FULL_DEMOS=2048 $(SFP_DEMOS)
 
-BUILD=Production
-LOADER=ROM
+BUILD=Debug
 
-GPRBUILD=gprbuild -XBUILD=$(BUILD) -XLOADER=$(LOADER)
+GPRBUILD=gprbuild -XBUILD=$(BUILD)
 
 all: sfp full
 
 sfp:
 	for f in $(SFP_DEMOS); do \
 	  for p in $$f/*.gpr; do \
-	    echo $$p; \
-            $(GPRBUILD) -XRTS=ravenscar-sfp -P $$p -p -q -j0; \
+	    echo $$p | grep common > /dev/null; \
+	    if [ $$? = 1 ]; then \
+	      echo $$p; \
+	      $(GPRBUILD) -XRTS=ravenscar-sfp -P $$p -p -q -j0; \
+            fi; \
 	  done; \
 	done
 

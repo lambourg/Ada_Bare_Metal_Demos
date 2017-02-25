@@ -26,7 +26,7 @@ with Interfaces;                 use Interfaces;
 
 with HAL.Bitmap;                 use HAL.Bitmap;
 with HAL.Framebuffer;            use HAL.Framebuffer;
-with HAL.SDCard;                 use HAL.SDCard;
+with SDMMC_Init;                 use SDMMC_Init;
 with Bitmapped_Drawing;          use Bitmapped_Drawing;
 
 with Cortex_M.Cache;             use Cortex_M.Cache;

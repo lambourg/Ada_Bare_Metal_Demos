@@ -6,7 +6,7 @@ project SDCard_RPI3 is
    for Target use "aarch64-elf";
    for Runtime ("Ada") use "ravenscar-sfp-rpi3";
 
-   for Object_Dir use "obj";
+   for Object_Dir use "obj/rpi3";
 
    for Main use ("sdcard_demo.adb");
    for Source_Dirs use ("src",
