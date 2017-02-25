@@ -29,6 +29,7 @@ package Gestures is
       H_Scroll,
       Tap,
       Long_Tap);
+   subtype Scroll_Id is Gesture_Id range V_Scroll .. H_Scroll;
 
    type Coordinate is record
       X : Natural;
@@ -45,10 +46,11 @@ package Gestures is
    type Touch_Points is array (1 .. 2) of Touch_Point;
 
    type Gesture_Data is record
-      Id       : Gesture_Id := No_Gesture;
-      Distance : Integer    := 0;
-      Speed    : Float      := 0.0;
-      Origin   : Coordinate := (0, 0);
+      Id        : Gesture_Id := No_Gesture;
+      Distance  : Integer    := 0;
+      Cumulated : Integer    := 0;
+      Speed     : Float      := 0.0;
+      Origin    : Coordinate := (0, 0);
    end record;
 
    No_Gesture_Data : constant Gesture_Data := (others => <>);

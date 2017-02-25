@@ -92,6 +92,7 @@ package body Gestures is
       Last_Point    : TP_Touch_State := Null_Touch_State;
       Start_Time    : Time;
       Last_Id       : Gesture_Id := No_Gesture;
+      Cumulated     : Integer := 0;
       Moved         : Boolean;
 
    begin
@@ -129,6 +130,7 @@ package body Gestures is
                   Last_Point  := Start_Point;
                   Start_Time  := Now;
                   Last_Id     := No_Gesture;
+                  Cumulated   := 0;
                   Moved       := False;
 
                else
@@ -147,16 +149,21 @@ package body Gestures is
                            then
                               Gesture.Id := H_Scroll;
                               Gesture.Distance := dX;
+                              Moved := True;
+                              --  Not a tap
+
                            elsif abs (dY) > 15
                              and then abs (dY) >  abs (dX) * 2
                            then
                               Gesture.Id := V_Scroll;
                               Gesture.Distance := dY;
-                           end if;
-
-                           if abs (dX) > 15 or else abs (dY) > 15 then
                               Moved := True;
                               --  Not a tap
+                           end if;
+
+                           if Gesture.Id in Scroll_Id then
+                              Cumulated := Gesture.Distance;
+                              Gesture.Cumulated := Cumulated;
                            end if;
 
                            if Gesture.Id /= No_Gesture then
@@ -166,10 +173,14 @@ package body Gestures is
                         when H_Scroll =>
                            Gesture.Id := H_Scroll;
                            Gesture.Distance := dX;
+                           Cumulated := Cumulated + Gesture.Distance;
+                           Gesture.Cumulated := Cumulated;
 
                         when V_Scroll =>
                            Gesture.Id := V_Scroll;
                            Gesture.Distance := dY;
+                           Cumulated := Cumulated + Gesture.Distance;
+                           Gesture.Cumulated := Cumulated;
 
                         when others =>
                            null;
@@ -208,6 +219,8 @@ package body Gestures is
                end if;
 
                Start_Point := Null_Touch_State;
+               Cumulated   := 0;
+               Last_Id     := No_Gesture;
             end if;
          end;
       end loop;
