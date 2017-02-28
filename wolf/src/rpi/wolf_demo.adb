@@ -21,13 +21,32 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Interfaces; use Interfaces;
+with Ada.Text_IO;           use Ada.Text_IO;
 
-package Textures is
+with RPi.Framebuffer;       use RPi.Framebuffer;
 
-   type Texture is array (0 .. 127, 0 .. 127) of Unsigned_16
-     with Component_Size => 32;
+with Playground;            use Playground;
+with Rpi_Board;             use Rpi_Board;
 
-   type Texture_Access is access constant Texture;
+--  A simple raycasting demo
+--  Below, we're using the follwing conventions:
+--
+--  Coordinates:
+--  +---> X
+--  |
+--  |
+--  v y
+--
+--  with angles in tenth of degrees, anticlockwise.
 
-end Textures;
+procedure Wolf_Demo
+is
+
+begin
+   Initialize (Display, Display_Width, Display_Height, 2);
+   Put_Line ("Display initialized");
+
+   Put_Line ("Now starting ...");
+
+   Playground.Play;
+end Wolf_Demo;

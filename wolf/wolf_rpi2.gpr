@@ -1,0 +1,13 @@
+with "../drivers/boards/rpi2";
+
+project Wolf_RPi2 extends "wolf_common.gpr" is
+
+   for Target use RPi2'Target;
+   for Runtime ("Ada") use RPi2'Runtime ("Ada");
+
+   for Source_Dirs use Project'Source_Dirs & ("src/rpi");
+   for Object_Dir use "obj/rpi2";
+
+   for Main use ("wolf_demo.adb");
+
+end Wolf_RPi2;

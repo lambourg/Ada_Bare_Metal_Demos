@@ -2,10 +2,9 @@ with "../drivers/boards/stm32f746disco.gpr";
 
 project Wolf_STM32F746Disco extends "wolf_common.gpr" is
 
-   for Target use STM32F746Disco'Target;
    for Runtime ("Ada") use STM32F746Disco'Runtime("Ada");
+   for Source_Dirs use Project'Source_Dirs & ("src/stm32");
    for Object_Dir use "obj/stm32f746disco";
-   for Exec_Dir use ".";
 
    for Main use ("wolf_demo.adb");
 

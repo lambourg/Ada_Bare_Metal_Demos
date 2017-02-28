@@ -21,52 +21,34 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Cos;
-with Rpi_Board;
+with System.Storage_Elements;  use System.Storage_Elements;
 
-package Raycaster is
+pragma Warnings (Off);
+with Interfaces.Cache;
+pragma Warnings (On);
 
-   type Cell is mod 7;
-   Empty       : constant Cell := 0;
-   Grey_Stone  : constant Cell := 1;
-   Grey_Ada    : constant Cell := 2;
-   Red_Brick   : constant Cell := 3;
-   Red_Ada     : constant Cell := 4;
-   Color_Stone : constant Cell := 5;
-   Color_Ada   : constant Cell := 6;
+package body Display is
 
-   type Map_Type is array (Natural range <>, Natural range <>) of Cell;
+   ------------------
+   -- Update_Layer --
+   ------------------
 
-   type Position is record
-      X     : Float;
-      Y     : Float;
-      Angle : Cos.Degree;
-   end record;
+   procedure Update_Layer (Layer : Positive)
+   is
+      pragma Unreferenced (Layer);
+   begin
+      RPi.Framebuffer.Flip (Rpi_Board.Display);
+   end Update_Layer;
 
-   Map : constant Map_Type :=
-            --    0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16
-           (0 => (3, 3, 4, 3, 3, 3, 4, 3, 4, 3, 4, 3, 4, 3, 3, 3, 1),
-            1 => (1, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6),
-            2 => (2, 0, 0, 0, 0, 0, 0, 1, 2, 1, 2, 1, 2, 1, 0, 5, 5),
-            3 => (1, 0, 0, 0, 3, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5),
-            4 => (1, 0, 0, 0, 3, 0, 1, 0, 5, 0, 0, 4, 3, 4, 0, 0, 5),
-            5 => (3, 3, 4, 3, 0, 0, 0, 0, 6, 0, 3, 0, 0, 0, 3, 0, 2),
-            6 => (4, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 3, 4, 3, 0, 0, 1),
-            7 => (3, 0, 1, 2, 1, 1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1),
-            8 => (4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2),
-            9 => (0, 1, 1, 2, 1, 1, 2, 1, 1, 2, 1, 1, 2, 1, 1, 1, 5));
+   -----------------
+   -- Flush_Cache --
+   -----------------
 
-   Current : Position := (X     => 2.5,
-                          Y     => 3.5,
-                          Angle => 900);
+   procedure Flush_Cache (Buffer : HAL.Bitmap.Bitmap_Buffer'Class)
+   is
+   begin
+      Interfaces.Cache.Dcache_Flush_By_Range
+        (Buffer.Addr, Storage_Offset (Buffer.Buffer_Size));
+   end Flush_Cache;
 
-   Actual_Height : constant Natural := Rpi_Board.Display_Height;
-   Height_Multiplier : constant Float :=
-                         Float (Actual_Height) / 1.5;
---     FOV : constant Cos.Degree := 1100;
-
-   procedure Initialize_Tables;
-
-   procedure Draw;
-
-end Raycaster;
+end Display;

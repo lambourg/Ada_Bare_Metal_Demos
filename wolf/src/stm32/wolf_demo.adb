@@ -21,15 +21,35 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Display; use Display;
+with Last_Chance_Handler;
+pragma Unreferenced (Last_Chance_Handler);
 
-package Raycaster is
 
-   Height_Multiplier : constant Float :=
-                         Float (LCD_H) / 1.5;
+with STM32.Board;           use STM32.Board;
+with STM32.SDRAM;
+with HAL.Bitmap;
+with HAL.Framebuffer;       use HAL.Framebuffer;
 
-   procedure Initialize_Tables;
+with Playground;            use Playground;
 
-   procedure Draw;
+--  A simple raycasting demo
+procedure Wolf_Demo
+is
+begin
+   STM32.SDRAM.Initialize;
+   Display.Initialize (HAL.Framebuffer.Landscape, HAL.Framebuffer.Polling);
+   Display.Initialize_Layer
+     (Layer  => 1,
+      Mode   => Playground.Color_Mode);
+   Display.Initialize_Layer
+     (Layer  => 2,
+      Mode   => HAL.Bitmap.ARGB_1555,
+      X      => 0,
+      Y      => 10,
+      Width  => 16 * 12,
+      Height => 28);
 
-end Raycaster;
+   Display.Update_Layers;
+
+   Playground.Play;
+end Wolf_Demo;

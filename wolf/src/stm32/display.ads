@@ -21,15 +21,54 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Display; use Display;
+with HAL.Bitmap;
+with HAL.Framebuffer;
 
-package Raycaster is
+with STM32.Board; use STM32.Board;
 
-   Height_Multiplier : constant Float :=
-                         Float (LCD_H) / 1.5;
+--  Wrapper around the board's display definition, to accomodate both STM32
+--  and raspberry pi implementations.
+package Display is
 
-   procedure Initialize_Tables;
+   LCD_W : constant Natural :=
+             (if LCD_Natural_Width > LCD_Natural_Height
+              then LCD_Natural_Width
+              else LCD_Natural_Height);
 
-   procedure Draw;
+   LCD_H : constant Natural :=
+             (if LCD_Natural_Width > LCD_Natural_Height
+              then LCD_Natural_Height
+              else LCD_Natural_Width);
 
-end Raycaster;
+   function Get_Color_Mode
+     (Layer : Positive) return HAL.Framebuffer.FB_Color_Mode
+     with Inline_Always;
+
+   function Is_Swapped return Boolean
+     with Inline_Always;
+
+   function Get_Hidden_Buffer
+     (Layer : Positive) return HAL.Bitmap.Bitmap_Buffer'Class
+     with Inline_Always;
+
+   procedure Update_Layer (Layer : Positive)
+     with Inline_Always;
+
+   procedure Update_Layers with Inline_Always;
+
+   Use_Copy_Rect_Always : constant Boolean := True;
+
+private
+
+   function Get_Color_Mode
+     (Layer : Positive) return HAL.Framebuffer.FB_Color_Mode
+   is (STM32.Board.Display.Get_Color_Mode (Layer));
+
+   function Is_Swapped return Boolean
+   is (STM32.Board.Display.Is_Swapped);
+
+   function Get_Hidden_Buffer
+     (Layer : Positive) return HAL.Bitmap.Bitmap_Buffer'Class
+   is (STM32.Board.Display.Get_Hidden_Buffer (Layer));
+
+end Display;

@@ -179,6 +179,7 @@ package Playground is
                   (Turn_Right, 900),
                   (Move_To, 40.5, 6.5),
                   (Turn_Left, 1800));
-   procedure Uncompress;
+
+   procedure Play;
 
 end Playground;

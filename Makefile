@@ -1,4 +1,4 @@
-SFP_DEMOS=balls conway fractals sdcard wav_player wolf rpi2-wolf rpi2-mmc
+SFP_DEMOS=balls conway fractals sdcard wav_player wolf rpi2-mmc
 FULL_DEMOS=2048 $(SFP_DEMOS)
 
 BUILD=Debug

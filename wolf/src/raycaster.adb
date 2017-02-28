@@ -21,19 +21,10 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Ada.Unchecked_Conversion;
-
+with System;
 with Interfaces;                        use Interfaces;
 
-with Cortex_M.Cache;
-
-with STM32.User_Button;
-with STM32.DMA2D_Bitmap;                use STM32.DMA2D_Bitmap;
-with Cortex_M.FPU;
-
 with HAL.Bitmap;                        use HAL.Bitmap;
---  with Bitmapped_Drawing;
---  with BMP_Fonts;
 
 with Playground;                        use Playground;
 with Textures.Greystone;
@@ -62,16 +53,6 @@ package body Raycaster is
       Y : Float;
    end record;
 
-   LCD_W : constant Natural :=
-             (if LCD_Natural_Width > LCD_Natural_Height
-              then LCD_Natural_Width
-              else LCD_Natural_Height);
-
-   LCD_H : constant Natural :=
-             (if LCD_Natural_Width > LCD_Natural_Height
-              then LCD_Natural_Height
-              else LCD_Natural_Width);
-
    Texture_Size : constant := Textures.Texture'Length (1);
 
    --  1 pixel = 1/10 degree
@@ -79,24 +60,25 @@ package body Raycaster is
 
    Sin_Table : array (Cos_Table'Range) of Float;
 
-   type Column_Type is array (0 .. LCD_H - 1) of Unsigned_16
-     with Component_Size => 16, Alignment => 32;
+   type Column_Pixels is array (0 .. LCD_H - 1) of HAL.UInt16 with Pack;
 
-   Bg          : Column_Type;
-   Tmp_1       : aliased Column_Type;
-   Height_1    : aliased Natural := LCD_H;
-   Top_1       : aliased Integer := 0;
-   Tmp_2       : aliased Column_Type;
-   Height_2    : aliased Natural := LCD_H;
-   Top_2       : aliased Integer := 0;
-   Tmp         : access Column_Type := Tmp_2'Access;
-   Prev_Height : access Natural := Height_2'Access;
-   Prev_Top    : access Integer := Top_2'Access;
-   Tmp_Buf     : DMA2D_Bitmap_Buffer;
+   --  Column_Info is used to save informations on the last drawn column.
+   --  It is used to speed-up the calculation in case the current column to
+   --  draw is identical to the previously drawn one.
+   type Column_Info is record
+      Tile_X      : Natural := 0;
+      Tile_Scale  : Natural := 0;
+      Tile_Kind   : Cell    := Empty;
+      Prev_Col    : Natural := 0;
+      Prev_Top    : Integer := 0;
+      Prev_Height : Integer := 0;
+      Column      : Column_Pixels;
+      Col_Buffer  : Bitmap_Buffer := HAL.Bitmap.Null_Buffer;
+   end record;
 
-   Prev_X      : Natural := 0;
-   Prev_Scale  : Natural := 0;
-   Prev_Tile   : Cell := Empty;
+   --  Pre-calculated background, representing roof and ceiling with colors
+   --  modified by the Fog
+   Bg  : Column_Pixels;
 
    --  Fog support
    Max_Fog_Dist  : constant := 18; --  Maximum fog distance
@@ -105,15 +87,15 @@ package body Raycaster is
    Mult_Values   : array (Fog_Distance) of Unsigned_32;
    Fog_Precision : constant := 1000;
 
---     Last        : Time := Clock;
---     FPS         : Natural := 0;
-
    function To_Unit_Vector (Angle : Degree) return Vector with Inline_Always;
    function Sin (Angle : Degree) return Float with Inline_Always;
    function Tan (Angle : Degree) return Float with Inline_Always;
    function Arctan (F : Float) return Degree with Inline_Always;
 
-   procedure Draw_Column (Col  : Natural);
+   procedure Draw_Column
+     (Col  : Natural;
+      Buf  : HAL.Bitmap.Bitmap_Buffer'Class;
+      Tmp  : in out Column_Info);
 
    procedure Distance
      (Pos      : Position;
@@ -128,7 +110,7 @@ package body Raycaster is
       Y    : Natural) return Unsigned_16
      with Inline_Always;
 
-   function Color
+   function Tile_Color
      (Tile     : Cell;
       X, Y     : Natural;
       Darken   : Boolean) return Unsigned_16
@@ -186,11 +168,12 @@ package body Raycaster is
 
    procedure Initialize_Tables
    is
-      X0, Xn : Float;
-      X      : Float;
-      FOV    : constant Cos.Degree :=
-                 2 * Arctan
-                   (Float (LCD_W) / (2.0 * Height_Multiplier));
+      X0, Xn     : Float;
+      X          : Float;
+      FOV        : constant Cos.Degree :=
+                     2 * Arctan
+                       (Float (LCD_W) / (2.0 * Height_Multiplier));
+
    begin
       X0 := Tan (-FOV / 2);
       Xn := -X0;
@@ -208,19 +191,8 @@ package body Raycaster is
          Sin_Table (Angle) := Sin (Angle);
       end loop;
 
-      Tmp_Buf :=
-        (Addr       => Tmp.all'Address,
-         Width      => 1,
-         Height     => LCD_H,
-         Color_Mode => Display.Get_Color_Mode (1),
-         Swapped    => Display.Is_Swapped);
-
-      Playground.Uncompress;
-
       for J in Grey_Values'Range loop
          declare
-            use Cortex_M.FPU;
-
             Dist  : constant Float := Float (J) / 128.0;
             Ratio : constant Float :=
                       (if Dist >= Float (Max_Fog_Dist) then 1.0
@@ -234,8 +206,7 @@ package body Raycaster is
       for J in Bg'Range loop
          if J < LCD_H / 2 then
             Bg (J) := Bg_Color
-              (Unsigned_16 (Bitmap_Color_To_Word (Color_Mode, Sky_Blue)),
-               J);
+              (Unsigned_16 (Bitmap_Color_To_Word (Color_Mode, Sky_Blue)), J);
          else
             Bg (J) := Bg_Color (2#00010_000100_00010#, J);
          end if;
@@ -411,7 +382,7 @@ package body Raycaster is
    -- Color --
    -----------
 
-   function Color
+   function Tile_Color
      (Tile     : Cell;
       X, Y     : Natural;
       Darken   : Boolean) return Unsigned_16
@@ -469,17 +440,17 @@ package body Raycaster is
                return Textures.Woodada_Dark.Bmp (Y, X);
             end if;
       end case;
-   end Color;
+   end Tile_Color;
 
    -----------------
    -- Draw_Column --
    -----------------
 
    procedure Draw_Column
-     (Col  : Natural)
+     (Col : Natural;
+      Buf : Bitmap_Buffer'Class;
+      Tmp : in out Column_Info)
    is
-      Buf      : constant HAL.Bitmap.Bitmap_Buffer'Class :=
-                   Display.Get_Hidden_Buffer (1);
       Col_Pos  : Position := Current;
       Off      : Float;
       Dist     : Float;
@@ -492,8 +463,8 @@ package body Raycaster is
       Scr_Top  : Integer;
 
       X, Y, dY : Natural;
---        Top      : Natural;
---        Prev_Top : Natural;
+
+      use type System.Address;
 
    begin
       Col_Pos.Angle := Current.Angle + FOV_Vect (Col);
@@ -506,6 +477,15 @@ package body Raycaster is
 
       if Tile = Empty then
          return;
+      end if;
+
+      if Tmp.Col_Buffer.Addr = System.Null_Address then
+         Tmp.Col_Buffer :=
+           (Addr       => Tmp.Column'Address,
+            Width      => 1,
+            Height     => LCD_H,
+            Color_Mode => Color_Mode,
+            Swapped    => Display.Is_Swapped);
       end if;
 
       X := Natural
@@ -534,40 +514,24 @@ package body Raycaster is
       end if;
 
       --  Do not recompute the temp column if we have an identical situation
-      if Prev_Scale /= Scale
-        or else Prev_X /= X
-        or else Prev_Tile /= Tile
+      if Tmp.Tile_Scale /= Scale
+        or else Tmp.Tile_X /= X
+        or else Tmp.Tile_Kind /= Tile
       then
-         --  While the Tmp buffer is being transfered, do not attempt to write
-         --  to it. We use a double buffer system here to prevent such modif
-         --  while transfering
-         if Tmp = Tmp_1'Access then
-            Tmp := Tmp_2'Access;
-            Prev_Height := Height_2'Access;
-            Prev_Top    := Top_2'Access;
-         else
-            Tmp := Tmp_1'Access;
-            Prev_Height := Height_1'Access;
-            Prev_Top    := Top_1'Access;
+         --  Fill top and bottom
+         if Scr_Top > 0 then
+            Tmp.Column (Tmp.Prev_Top .. Scr_Top - 1) :=
+              Bg (Tmp.Prev_Top .. Scr_Top - 1);
          end if;
 
-         Tmp_Buf.Addr := Tmp.all'Address;
-
-         --  Fill top and bottom
-         if Prev_Height.all > Height then
-            if Scr_Top > 0 then
-               Tmp (Prev_Top.all .. Scr_Top - 1) :=
-                 Bg (Prev_Top.all .. Scr_Top - 1);
-            end if;
-
-            if Scr_Top + Height < LCD_H then
-               Tmp (Scr_Top + Height .. Prev_Top.all + Prev_Height.all - 1) :=
-                 Bg (Scr_Top + Height .. Prev_Top.all + Prev_Height.all - 1);
-            end if;
+         if Scr_Top + Height < LCD_H then
+            Tmp.Column
+              (Scr_Top + Height .. Tmp.Prev_Top + Tmp.Prev_Height - 1) :=
+              Bg (Scr_Top + Height .. Tmp.Prev_Top + Tmp.Prev_Height - 1);
          end if;
 
          declare
-            Col      : Unsigned_16;
+            Color : Unsigned_16;
             type RGB_Color is record
                R : HAL.UInt5;
                G : HAL.UInt6;
@@ -582,13 +546,14 @@ package body Raycaster is
 
             Grey     : constant HAL.UInt6 := 48;
             Grey5    : constant HAL.UInt5 := 24;
-            RGB      : RGB_Color with Address => Col'Address;
+            RGB      : RGB_Color with Address => Color'Address;
             Distn    : constant Unsigned_32 := Unsigned_32 (128.0 * Dist);
 
          begin
             if Distn not in Mult_Values'Range then
                RGB := (Grey5, Grey, Grey5);
-               Tmp (Scr_Top .. Scr_Top + Height) := (others => Col);
+               Tmp.Column (Scr_Top .. Scr_Top + Height - 1) :=
+                 (others => Color);
 
             else
                declare
@@ -614,9 +579,9 @@ package body Raycaster is
                      --  Shrinking case
                      for Row in 0 .. Height - 1 loop
                         Y := ((Row + dY) * Texture_Size + Scale / 2) / Scale;
-                        Col := Color (Tile, X, Y, Side);
+                        Color := Tile_Color (Tile, X, Y, Side);
                         Handle_Mist;
-                        Tmp (Scr_Top + Row) := Col;
+                        Tmp.Column (Scr_Top + Row) := Color;
                      end loop;
 
                   else
@@ -631,7 +596,7 @@ package body Raycaster is
 
                      begin
                         for Y in Y0 .. Y1 loop
-                           Col := Color (Tile, X, Y, Side);
+                           Color := Tile_Color (Tile, X, Y, Side);
                            Handle_Mist;
                            Row := R_Next;
 
@@ -641,14 +606,7 @@ package body Raycaster is
                               R_Next := ((Y + 1) * Scale) / Texture_Size - dY;
                            end if;
 
-                           if R_Next + Scr_Top >= LCD_H then
-                              Tmp (Scr_Top + Row .. LCD_H - 1) :=
-                                (others => Col);
-                              exit;
-                           else
-                              Tmp (Scr_Top + Row .. Scr_Top + R_Next - 1) :=
-                                (others => Col);
-                           end if;
+                           Tmp.Column (Scr_Top + Row .. Scr_Top + R_Next - 1) := (others => Color);
                         end loop;
                      end;
                   end if;
@@ -656,70 +614,52 @@ package body Raycaster is
             end if;
          end;
 
-         Cortex_M.Cache.Clean_DCache (Tmp (0)'Address, Height * 2);
+         Tmp.Tile_X      := X;
+         Tmp.Tile_Scale  := Scale;
+         Tmp.Tile_Kind   := Tile;
+         Tmp.Prev_Col    := Col;
+         Tmp.Prev_Top    := Scr_Top;
+         Tmp.Prev_Height := Height;
 
-         Prev_Scale := Scale;
-         Prev_X := X;
-         Prev_Tile := Tile;
-         Prev_Height.all := Height;
-         Prev_Top.all := Scr_Top;
+         if Display.Use_Copy_Rect_Always then
+            Copy_Rect
+              (Src_Buffer  => Tmp.Col_Buffer,
+               X_Src       => 0,
+               Y_Src       => 0,
+               Dst_Buffer  => Buf,
+               X_Dst       => Col,
+               Y_Dst       => 0,
+               Width       => 1,
+               Height      => LCD_H,
+               Synchronous => False);
+         else
+            for J in Tmp.Column'Range loop
+               Buf.Set_Pixel (Col, J, Unsigned_32 (Tmp.Column (J)));
+            end loop;
+         end if;
+      else
+         Copy_Rect
+           (Src_Buffer  => Buf,
+            X_Src       => Tmp.Prev_Col,
+            Y_Src       => 0,
+            Dst_Buffer  => Buf,
+            X_Dst       => Col,
+            Y_Dst       => 0,
+            Width       => 1,
+            Height      => LCD_H,
+            Synchronous => False,
+            Clean_Cache => False);
       end if;
-
-      --  Start next column as soon as possible, so don't wait for the DMA
-      --  transfer to terminate (Synchronous is False).
-      Copy_Rect
-        (Src_Buffer  => Tmp_Buf,
-         X_Src       => 0,
-         Y_Src       => 0,
-         Dst_Buffer  => Buf,
-         X_Dst       => Col,
-         Y_Dst       => 0,
-         Width       => 1,
-         Height      => LCD_H,
-         Synchronous => False);
    end Draw_Column;
 
-   ----------
-   -- Draw --
-   ----------
+   package Tasks is
 
-   procedure Draw
-   is
-   begin
-      for X in FOV_Vect'Range loop
-         Draw_Column (X);
-      end loop;
+      procedure Draw;
 
---        FPS := FPS + 1;
---
---        if Clock - Last > Milliseconds (500) then
---           declare
---              FG  : constant HAL.Bitmap.Bitmap_Buffer'Class :=
---                      Display.Get_Hidden_Buffer (2);
---           begin
---              FG.Fill (Transparent);
---              Cortex_M.Cache.Invalidate_DCache (FG.Addr, FG.Buffer_Size);
---              Bitmapped_Drawing.Draw_String
---                (Buffer     => FG,
---                 Start      => (0, 0),
---                 Msg        => Natural'Image (FPS * 2) & " fps",
---                 Font       => BMP_Fonts.Font12x12,
---                 Foreground => HAL.Bitmap.White,
---                 Background => HAL.Bitmap.Transparent);
---              Display.Update_Layers;
---           end;
---
---           FPS := 0;
---           Last := Clock;
---        else
-      Display.Update_Layer (1);
---        end if;
+   end Tasks;
 
-      if STM32.User_Button.Has_Been_Pressed then
-         while not STM32.User_Button.Has_Been_Pressed loop
-            null;
-         end loop;
-      end if;
-   end Draw;
+   package body Tasks is separate;
+
+   procedure Draw renames Tasks.Draw;
 
 end Raycaster;

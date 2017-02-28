@@ -27,10 +27,10 @@ The following demos/examples are available:
   * **conway**: A version of the "Game of Life", for STM32 discovery boards
   * **fractals**: Mandelbrot/Julia fractals calculator, with zooming capability using the touch screen, for STM32 discovery boards
   * **rpi2-mmc**: SD/MMC card demo for the Raspberry Pi2/Pi3
-  * **rpi2-wolf**: A raycaster demo "a la" Castle Wolfenstein. For Raspberry Pi2/3.
   * **sdcard**: SDCard demo for the STM32 discovery boards
   * **wav_player**: A simple WAV player to play songs from sdcards. For the STM32Disco boards with display and audio support.
-  * **wolf**: A raycaster demo "a la" Castle Wolfenstein. For STM32disco boards.
+  * **wolf**: A raycaster demo "a la" Castle Wolfenstein. For STM32disco and
+raspberry pi2/3 boards.
   * **zynq-eth**: Ethernet experimentations for the Zynq7k.
 
 This repository also contains a FAT FS Library that is used by some of the

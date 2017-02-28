@@ -21,15 +21,26 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Display; use Display;
+package body Display is
 
-package Raycaster is
+   ------------------
+   -- Update_Layer --
+   ------------------
 
-   Height_Multiplier : constant Float :=
-                         Float (LCD_H) / 1.5;
+   procedure Update_Layer (Layer : Positive)
+   is
+   begin
+      STM32.Board.Display.Update_Layer (Layer);
+   end Update_Layer;
 
-   procedure Initialize_Tables;
+   -------------------
+   -- Update_Layers --
+   -------------------
 
-   procedure Draw;
+   procedure Update_Layers
+   is
+   begin
+      STM32.Board.Display.Update_Layers;
+   end Update_Layers;
 
-end Raycaster;
+end Display;

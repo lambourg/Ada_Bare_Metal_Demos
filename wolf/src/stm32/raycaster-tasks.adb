@@ -21,15 +21,59 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Display; use Display;
+with Ada.Real_Time; use Ada.Real_Time;
 
-package Raycaster is
+with Cortex_M.Cache;
+with Bitmapped_Drawing;
+with BMP_Fonts;
 
-   Height_Multiplier : constant Float :=
-                         Float (LCD_H) / 1.5;
+separate (Raycaster)
+package body Tasks is
 
-   procedure Initialize_Tables;
+   FPS  : Natural := 0;
+   Last : Time := Clock;
 
-   procedure Draw;
+   ----------
+   -- Draw --
+   ----------
 
-end Raycaster;
+   procedure Draw
+   is
+      Buf  : constant Bitmap_Buffer'Class :=
+               Display.Get_Hidden_Buffer (1);
+      Info : Column_Info;
+   begin
+      Info.Prev_Height := LCD_H;
+      Info.Prev_Top    := 0;
+
+      for X in FOV_Vect'Range loop
+         Draw_Column (X, Buf, Info);
+      end loop;
+
+      FPS := FPS + 1;
+
+      if Clock - Last > Milliseconds (500) then
+         declare
+            FG  : constant HAL.Bitmap.Bitmap_Buffer'Class :=
+                    Display.Get_Hidden_Buffer (2);
+         begin
+            FG.Fill (Transparent);
+            Cortex_M.Cache.Invalidate_DCache (FG.Addr, FG.Buffer_Size);
+            Bitmapped_Drawing.Draw_String
+              (Buffer     => FG,
+               Start      => (0, 0),
+               Msg        => Natural'Image (FPS * 2) & " fps",
+               Font       => BMP_Fonts.Font12x12,
+               Foreground => HAL.Bitmap.White,
+               Background => HAL.Bitmap.Transparent);
+            Display.Update_Layers;
+         end;
+
+         FPS := 0;
+         Last := Clock;
+      else
+         Display.Update_Layer (1);
+      end if;
+   end Draw;
+
+end Tasks;

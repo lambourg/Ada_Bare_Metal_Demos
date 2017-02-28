@@ -3604,4 +3604,9 @@ package Cos is
                   9.99994E-01,
                   9.99998E-01);
 
+      function Sqrt (X : Float) return Float
+        with Import,
+             Convention => Intrinsic,
+             External_Name => "__builtin_sqrtf";
+
 end Cos;

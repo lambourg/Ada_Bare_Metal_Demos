@@ -21,15 +21,49 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Display; use Display;
+with HAL.Bitmap;
+with HAL.Framebuffer;
 
-package Raycaster is
+with Rpi_Board;
+with RPi.Framebuffer;
 
-   Height_Multiplier : constant Float :=
-                         Float (LCD_H) / 1.5;
+package Display is
 
-   procedure Initialize_Tables;
+   LCD_W  : constant Natural := Rpi_Board.Display_Width;
+   LCD_H  : constant Natural := Rpi_Board.Display_Height;
 
-   procedure Draw;
+   Use_Copy_Rect_Always : constant Boolean := False;
+   --  When copying from the cached data to the string, we need this copy to
+   --  be synchronous, so that the column can later on be duplicated safely if
+   --  needed.
 
-end Raycaster;
+   function Get_Color_Mode
+     (Layer : Positive) return HAL.Framebuffer.FB_Color_Mode
+     with Inline_Always;
+
+   function Is_Swapped return Boolean
+     with Inline_Always;
+
+   function Get_Hidden_Buffer
+     (Layer : Positive) return HAL.Bitmap.Bitmap_Buffer'Class
+     with Inline_Always;
+
+   procedure Update_Layer (Layer : Positive)
+     with Inline_Always;
+
+   procedure Flush_Cache (Buffer : HAL.Bitmap.Bitmap_Buffer'Class);
+
+private
+
+   function Get_Color_Mode
+     (Layer : Positive) return HAL.Framebuffer.FB_Color_Mode
+   is (RPi.Framebuffer.Get_Color_Mode (Rpi_Board.Display));
+
+   function Is_Swapped return Boolean
+   is (False);
+
+   function Get_Hidden_Buffer
+     (Layer : Positive) return HAL.Bitmap.Bitmap_Buffer'Class
+   is (RPi.Framebuffer.Hidden_Framebuffer (Rpi_Board.Display));
+
+end Display;
