@@ -1,7 +1,7 @@
 ------------------------------------------------------------------------------
 --                        Bareboard drivers examples                        --
 --                                                                          --
---                     Copyright (C) 2015-2016, AdaCore                     --
+--                     Copyright (C) 2015-2017, AdaCore                     --
 --                                                                          --
 -- This library is free software;  you can redistribute it and/or modify it --
 -- under terms of the  GNU General Public License  as published by the Free --
@@ -25,8 +25,15 @@ with Interfaces; use Interfaces;
 
 package Textures is
 
-   type Texture is array (0 .. 127, 0 .. 127) of Unsigned_16
+   Texture_Size : constant := 128;
+
+   type Texture_Column is array (0 .. Texture_Size - 1) of Unsigned_16
      with Component_Size => 16;
+
+   type Texture is array (0 .. Texture_Size - 1) of aliased Texture_Column
+     with Pack;
+
+   type Texture_Column_Access is access constant Texture_Column;
 
    type Texture_Access is access constant Texture;
 

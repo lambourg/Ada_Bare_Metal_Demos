@@ -37,6 +37,8 @@ package Display is
    --  be synchronous, so that the column can later on be duplicated safely if
    --  needed.
 
+   Supports_Copy_Blend  : constant Boolean := False;
+
    function Get_Color_Mode
      (Layer : Positive) return HAL.Framebuffer.FB_Color_Mode
      with Inline_Always;
@@ -61,9 +63,5 @@ private
 
    function Is_Swapped return Boolean
    is (False);
-
-   function Get_Hidden_Buffer
-     (Layer : Positive) return HAL.Bitmap.Bitmap_Buffer'Class
-   is (RPi.Framebuffer.Hidden_Framebuffer (Rpi_Board.Display));
 
 end Display;

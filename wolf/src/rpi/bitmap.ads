@@ -21,33 +21,21 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Last_Chance_Handler;
-pragma Unreferenced (Last_Chance_Handler);
+with System;
 
-
-with STM32.Board;           use STM32.Board;
-with STM32.SDRAM;
+with HAL;                use HAL;
 with HAL.Bitmap;
-with HAL.Framebuffer;       use HAL.Framebuffer;
+with RPi.Bitmap;
 
-with Playground;            use Playground;
+package Bitmap is
 
---  A simple raycasting demo
-procedure Wolf_Demo
-is
-begin
-   STM32.SDRAM.Initialize;
-   Display.Initialize (HAL.Framebuffer.Landscape, HAL.Framebuffer.Polling);
-   Display.Initialize_Layer
-     (Layer  => 1,
-      Mode   => Playground.Color_Mode);
-   Display.Initialize_Layer
-     (Layer  => 2,
-      Mode   => HAL.Bitmap.ARGB_1555,
-      X      => 5,
-      Y      => 5,
-      Width  => 25 * 12, --  25 characters
-      Height => 5 * 12); --  5 lines
+   subtype Bitmap_Buffer is RPi.Bitmap.RPi_Bitmap_Buffer;
 
-   Playground.Play;
-end Wolf_Demo;
+   Null_Buffer : constant Bitmap_Buffer :=
+                   (Addr       => System.Null_Address,
+                    Width      => 0,
+                    Height     => 0,
+                    Color_Mode => HAL.Bitmap.L_8,
+                    Swapped    => False);
+
+end Bitmap;

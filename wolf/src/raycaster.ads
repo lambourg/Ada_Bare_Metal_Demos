@@ -21,15 +21,49 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Display; use Display;
+with Display;    use Display;
+with Math;       use Math;
+with Playground;
 
 package Raycaster is
+
+   subtype LCD_Column is Natural range 0 .. LCD_W - 1;
 
    Height_Multiplier : constant Float :=
                          Float (LCD_H) / 1.5;
 
+   --  1 pixel = 1/10 degree
+   FOV_Vect          : array (0 .. LCD_W - 1) of Degree;
+
+   FOV               : constant Math.Degree :=
+                         2 * Arctan
+                           (Float (LCD_W) / (2.0 * Height_Multiplier));
+
+
+   type Trace_Point is record
+      Col          : LCD_Column;
+      Dist         : Float;
+      Tile         : Playground.Cell;
+      Offset       : Float;
+      Vertical_Hit : Boolean := False;
+      Visible_Tile : Boolean := False;
+   end record;
+
+   type Trace_Points is array (LCD_Column) of Trace_Point;
+
+   type Visible_Elements is
+     array (Playground.Compressed'Range, 0 .. Playground.Compressed (1)'Length)
+       of Boolean;
+
    procedure Initialize_Tables;
 
-   procedure Draw;
+   procedure Trace
+     (Col           : LCD_Column;
+      Visible_Tiles : in out Visible_Elements;
+      Ray           :    out Trace_Point);
+
+   procedure Trace_Rays
+     (Visible_Tiles : out Visible_Elements;
+      Tracers       : out Trace_Points);
 
 end Raycaster;

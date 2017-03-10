@@ -21,46 +21,76 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with System.Storage_Elements;  use System.Storage_Elements;
+with Cortex_M.Cache;
+with STM32.DMA2D;
 
-pragma Warnings (Off);
-with Interfaces.Cache;
-pragma Warnings (On);
+package body Bitmap is
 
-package body Display is
+   ----------
+   -- Fill --
+   ----------
 
-   ------------------
-   -- Update_Layer --
-   ------------------
-
-   procedure Update_Layer (Layer : Positive)
-   is
-      pragma Unreferenced (Layer);
-   begin
-      RPi.Framebuffer.Flip (Rpi_Board.Display);
-   end Update_Layer;
-
-   -----------------
-   -- Flush_Cache --
-   -----------------
-
-   procedure Flush_Cache (Buffer : HAL.Bitmap.Bitmap_Buffer'Class)
+   overriding procedure Fill
+     (Buffer : Bitmap_Buffer;
+      Color  : UInt32)
    is
    begin
-      Interfaces.Cache.Dcache_Flush_By_Range
-        (Buffer.Addr, Storage_Offset (Buffer.Buffer_Size));
-   end Flush_Cache;
+      STM32.DMA2D.DMA2D_Fill
+        (STM32.DMA2D_Bitmap.To_DMA2D_Buffer (Buffer), Color, True);
+   end Fill;
 
-   -----------------------
-   -- Get_Hidden_Buffer --
-   -----------------------
+   ---------------
+   -- Fill_Rect --
+   ---------------
 
-   function Get_Hidden_Buffer
-     (Layer : Positive) return HAL.Bitmap.Bitmap_Buffer'Class
+   overriding procedure Fill_Rect
+     (Buffer : Bitmap_Buffer;
+      Color  : UInt32;
+      X      : Integer;
+      Y      : Integer;
+      Width  : Integer;
+      Height : Integer)
    is
-      pragma Unreferenced (Layer);
    begin
-      return RPi.Framebuffer.Hidden_Framebuffer (Rpi_Board.Display);
-   end Get_Hidden_Buffer;
+      STM32.DMA2D.DMA2D_Fill_Rect
+        (STM32.DMA2D_Bitmap.To_DMA2D_Buffer (Buffer),
+         Color  => Color,
+         X      => X,
+         Y      => Y,
+         Width  => Width,
+         Height => Height);
+   end Fill_Rect;
 
-end Display;
+   ---------------
+   -- Copy_Rect --
+   ---------------
+
+   overriding procedure Copy_Rect
+     (Src_Buffer  : HAL.Bitmap.Bitmap_Buffer'Class;
+      X_Src       : Natural;
+      Y_Src       : Natural;
+      Dst_Buffer  : Bitmap_Buffer;
+      X_Dst       : Natural;
+      Y_Dst       : Natural;
+      Bg_Buffer   : HAL.Bitmap.Bitmap_Buffer'Class;
+      X_Bg        : Natural;
+      Y_Bg        : Natural;
+      Width       : Natural;
+      Height      : Natural;
+      Synchronous : Boolean;
+      Clean_Cache : Boolean := True)
+   is
+   begin
+      if Clean_Cache then
+         Cortex_M.Cache.Clean_DCache (Src_Buffer.Addr, Src_Buffer.Buffer_Size);
+      end if;
+
+      STM32.DMA2D.DMA2D_Copy_Rect
+        (STM32.DMA2D_Bitmap.To_DMA2D_Buffer (Src_Buffer), X_Src, Y_Src,
+         STM32.DMA2D_Bitmap.To_DMA2D_Buffer (Dst_Buffer), X_Dst, Y_Dst,
+         STM32.DMA2D_Bitmap.To_DMA2D_Buffer (Bg_Buffer), X_Bg, Y_Bg,
+         Width, Height,
+         Synchronous => Synchronous);
+   end Copy_Rect;
+
+end Bitmap;

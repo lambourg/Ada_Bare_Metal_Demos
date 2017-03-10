@@ -24,15 +24,19 @@
 with System;
 with System.Multiprocessors;        use System.Multiprocessors;
 
+with Ada.Real_Time;                 use Ada.Real_Time;
 with Ada.Synchronous_Task_Control;  use Ada.Synchronous_Task_Control;
 
-separate (Raycaster)
+with GNAT.IO;
+
+separate (Renderer)
 package body Tasks is
 
    type Suspension_Array is array (1 .. 4) of
      Ada.Synchronous_Task_Control.Suspension_Object;
 
-   Starts : Suspension_Array;
+   Tracers : Raycaster.Trace_Points;
+   Starts  : Suspension_Array;
 
    ---------------
    -- Draw_Task --
@@ -106,7 +110,7 @@ package body Tasks is
                   exit Drawing_Loop when X = LCD_W;
                end if;
 
-               Draw_Column (X, Buf, Tmp);
+               Draw_Wall (Tracers (X), Buf, Tmp);
                X := X + 1;
             end loop Drawing_Loop;
          end;
@@ -164,16 +168,69 @@ package body Tasks is
       end Reset;
    end Draw_Prot;
 
+   FPS  : Natural := 0;
+   Last : Time := Clock;
+
+   ----------------
+   -- Initialize --
+   ----------------
+
+   procedure Initialize is
+   begin
+      null;
+   end Initialize;
+
+   -------------------------
+   -- Copy_Sprites_Buffer --
+   -------------------------
+
+   procedure Copy_Sprites_Buffer
+     (Cache  : Column_Info;
+      Buf    : HAL.Bitmap.Bitmap_Buffer'Class;
+      X      : Natural;
+      Y      : Natural;
+      Height : Natural)
+   is
+      function To_RGB (Col : UInt16) return UInt16;
+
+      ------------
+      -- To_RGB --
+      ------------
+
+      function To_RGB (Col : UInt16) return UInt16
+      is
+      begin
+         return Shift_Left (Col and 2#0_11111_11111_00000#, 1)
+           or (Col and 2#0_00000_00000_11111#);
+      end To_RGB;
+
+      Col : UInt16;
+
+   begin
+      for Row in 0 .. Height - 1 loop
+         Col := Cache.Column (Row);
+         if Col /= 0 then
+            Buf.Set_Pixel (X, Y + Row, Unsigned_32 (To_RGB (Col)));
+         end if;
+      end loop;
+   end Copy_Sprites_Buffer;
+
    ----------
    -- Draw --
    ----------
 
-   procedure Draw is
-      Buf : constant Bitmap_Buffer'Class :=
-              Display.Get_Hidden_Buffer (1);
+   procedure Draw
+   is
+      Visible : Visible_Elements := (others => (others => False));
+      Buf     : constant Bitmap_Buffer'Class :=
+                  Display.Get_Hidden_Buffer (1);
    begin
       --  Lock the protected object
       Draw_Prot.Reset;
+
+      --  Trace the rays in the env task
+      Trace_Rays (Visible, Tracers);
+      Sort_Sprites (Visible);
 
       for J in Starts'Range loop
          --  Unlock all tasks: when work is completed, it will unlock the
@@ -184,13 +241,16 @@ package body Tasks is
       --  Wait for the tasks to finish
       Draw_Prot.Wait;
 
---        FPS := FPS + 1;
+      Draw_Sprites (Buf, Tracers);
 
---        if Clock - Last > Milliseconds (500) then
---           Ada.Text_IO.Put_Line (Natural'Image (FPS * 2) & " fps");
---           FPS  := 0;
---           Last := Clock;
---        end if;
+      FPS := FPS + 1;
+
+      if Clock - Last > Milliseconds (500) then
+         GNAT.IO.Put (FPS);
+         GNAT.IO.Put_Line (" fps");
+         FPS  := 0;
+         Last := Clock;
+      end if;
 
       Buf.Wait_Transfer;
       Display.Update_Layer (1);

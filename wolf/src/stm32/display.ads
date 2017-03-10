@@ -21,6 +21,7 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
+with Bitmap;
 with HAL.Bitmap;
 with HAL.Framebuffer;
 
@@ -40,6 +41,9 @@ package Display is
               then LCD_Natural_Height
               else LCD_Natural_Width);
 
+   Use_Copy_Rect_Always : constant Boolean := True;
+   --  Accelerated Copy_Rect available with the DMA2D
+
    function Get_Color_Mode
      (Layer : Positive) return HAL.Framebuffer.FB_Color_Mode
      with Inline_Always;
@@ -48,7 +52,7 @@ package Display is
      with Inline_Always;
 
    function Get_Hidden_Buffer
-     (Layer : Positive) return HAL.Bitmap.Bitmap_Buffer'Class
+     (Layer : Positive) return Bitmap.Bitmap_Buffer'Class
      with Inline_Always;
 
    procedure Update_Layer (Layer : Positive)
@@ -56,7 +60,7 @@ package Display is
 
    procedure Update_Layers with Inline_Always;
 
-   Use_Copy_Rect_Always : constant Boolean := True;
+   procedure Flush_Cache (Buffer : HAL.Bitmap.Bitmap_Buffer'Class);
 
 private
 
@@ -66,9 +70,5 @@ private
 
    function Is_Swapped return Boolean
    is (STM32.Board.Display.Is_Swapped);
-
-   function Get_Hidden_Buffer
-     (Layer : Positive) return HAL.Bitmap.Bitmap_Buffer'Class
-   is (STM32.Board.Display.Get_Hidden_Buffer (Layer));
 
 end Display;

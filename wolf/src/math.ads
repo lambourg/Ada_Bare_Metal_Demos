@@ -21,33 +21,22 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Last_Chance_Handler;
-pragma Unreferenced (Last_Chance_Handler);
+package Math is
+   pragma Elaborate_Body;
 
+   type Degree is mod 3600;
 
-with STM32.Board;           use STM32.Board;
-with STM32.SDRAM;
-with HAL.Bitmap;
-with HAL.Framebuffer;       use HAL.Framebuffer;
+   function Cos (Angle : Degree) return Float with Inline_Always;
 
-with Playground;            use Playground;
+   function Sin (Angle : Degree) return Float with Inline_Always;
 
---  A simple raycasting demo
-procedure Wolf_Demo
-is
-begin
-   STM32.SDRAM.Initialize;
-   Display.Initialize (HAL.Framebuffer.Landscape, HAL.Framebuffer.Polling);
-   Display.Initialize_Layer
-     (Layer  => 1,
-      Mode   => Playground.Color_Mode);
-   Display.Initialize_Layer
-     (Layer  => 2,
-      Mode   => HAL.Bitmap.ARGB_1555,
-      X      => 5,
-      Y      => 5,
-      Width  => 25 * 12, --  25 characters
-      Height => 5 * 12); --  5 lines
+   function Tan (Angle : Degree) return Float with Inline_Always;
 
-   Playground.Play;
-end Wolf_Demo;
+   function Arctan (F : Float) return Degree with Inline_Always;
+
+   function Sqrt (X : Float) return Float
+     with Import,
+     Convention => Intrinsic,
+     External_Name => "__builtin_sqrtf";
+
+end Math;

@@ -21,7 +21,23 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
+with Cortex_M.Cache;
+
 package body Display is
+
+   function Get_Hidden_Buffer
+     (Layer : Positive) return Bitmap.Bitmap_Buffer'Class
+   is
+      Buf : constant HAL.Bitmap.Bitmap_Buffer'Class :=
+              STM32.Board.Display.Get_Hidden_Buffer (Layer);
+   begin
+      return Bitmap.Bitmap_Buffer'
+        (Addr       => Buf.Addr,
+         Width      => Buf.Width,
+         Height     => Buf.Height,
+         Color_Mode => Buf.Color_Mode,
+         Swapped    => Buf.Swapped);
+   end Get_Hidden_Buffer;
 
    ------------------
    -- Update_Layer --
@@ -42,5 +58,15 @@ package body Display is
    begin
       STM32.Board.Display.Update_Layers;
    end Update_Layers;
+
+   -----------------
+   -- Flush_Cache --
+   -----------------
+
+   procedure Flush_Cache (Buffer : HAL.Bitmap.Bitmap_Buffer'Class)
+   is
+   begin
+      Cortex_M.Cache.Clean_DCache (Buffer.Addr, Buffer.Buffer_Size);
+   end Flush_Cache;
 
 end Display;

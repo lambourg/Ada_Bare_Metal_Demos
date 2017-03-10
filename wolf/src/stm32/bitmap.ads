@@ -21,59 +21,50 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Ada.Real_Time; use Ada.Real_Time;
+with System;
 
-with Cortex_M.Cache;
-with Bitmapped_Drawing;
-with BMP_Fonts;
+with HAL;                use HAL;
+with HAL.Bitmap;
 
-separate (Raycaster)
-package body Tasks is
+with STM32.DMA2D_Bitmap;
 
-   FPS  : Natural := 0;
-   Last : Time := Clock;
+package Bitmap is
 
-   ----------
-   -- Draw --
-   ----------
+   type Bitmap_Buffer is new STM32.DMA2D_Bitmap.DMA2D_Bitmap_Buffer
+   with null record;
 
-   procedure Draw
-   is
-      Buf  : constant Bitmap_Buffer'Class :=
-               Display.Get_Hidden_Buffer (1);
-      Info : Column_Info;
-   begin
-      Info.Prev_Height := LCD_H;
-      Info.Prev_Top    := 0;
+   overriding procedure Fill
+     (Buffer : Bitmap_Buffer;
+      Color  : UInt32);
 
-      for X in FOV_Vect'Range loop
-         Draw_Column (X, Buf, Info);
-      end loop;
+   overriding procedure Fill_Rect
+     (Buffer : Bitmap_Buffer;
+      Color  : UInt32;
+      X      : Integer;
+      Y      : Integer;
+      Width  : Integer;
+      Height : Integer);
 
-      FPS := FPS + 1;
+   overriding procedure Copy_Rect
+     (Src_Buffer  : HAL.Bitmap.Bitmap_Buffer'Class;
+      X_Src       : Natural;
+      Y_Src       : Natural;
+      Dst_Buffer  : Bitmap_Buffer;
+      X_Dst       : Natural;
+      Y_Dst       : Natural;
+      Bg_Buffer   : HAL.Bitmap.Bitmap_Buffer'Class;
+      X_Bg        : Natural;
+      Y_Bg        : Natural;
+      Width       : Natural;
+      Height      : Natural;
+      Synchronous : Boolean;
+      Clean_Cache : Boolean := True);
 
-      if Clock - Last > Milliseconds (500) then
-         declare
-            FG  : constant HAL.Bitmap.Bitmap_Buffer'Class :=
-                    Display.Get_Hidden_Buffer (2);
-         begin
-            FG.Fill (Transparent);
-            Cortex_M.Cache.Invalidate_DCache (FG.Addr, FG.Buffer_Size);
-            Bitmapped_Drawing.Draw_String
-              (Buffer     => FG,
-               Start      => (0, 0),
-               Msg        => Natural'Image (FPS * 2) & " fps",
-               Font       => BMP_Fonts.Font12x12,
-               Foreground => HAL.Bitmap.White,
-               Background => HAL.Bitmap.Transparent);
-            Display.Update_Layers;
-         end;
+   Null_Buffer : constant Bitmap_Buffer :=
+                   (Addr       => System.Null_Address,
+                    Width      => 0,
+                    Height     => 0,
+                    Color_Mode => HAL.Bitmap.L_8,
+                    Swapped    => False);
 
-         FPS := 0;
-         Last := Clock;
-      else
-         Display.Update_Layer (1);
-      end if;
-   end Draw;
-
-end Tasks;
+end Bitmap;

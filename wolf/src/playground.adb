@@ -22,7 +22,7 @@
 ------------------------------------------------------------------------------
 
 with Ada.Real_Time;         use Ada.Real_Time;
-with Raycaster;             use Raycaster;
+with Renderer;              use Renderer;
 
 package body Playground is
 
@@ -50,23 +50,27 @@ package body Playground is
             C := Compressed (Y) (X);
             case C is
                when ' ' =>
-                  Val := 0;
+                  Val := Empty;
                when '1' =>
-                  Val := 1;
+                  Val := Red_Brick;
                when '2' =>
-                  Val := 2;
+                  Val := Red_Ada;
                when '3' =>
-                  Val := 3;
+                  Val := Color_Stone;
                when '4' =>
-                  Val := 4;
+                  Val := Color_Ada;
                when '5' =>
-                  Val := 5;
+                  Val := Grey_Stone;
                when '6' =>
-                  Val := 6;
+                  Val := Grey_Ada;
                when '7' =>
-                  Val := 7;
+                  Val := Wood;
                when '8' =>
-                  Val := 8;
+                  Val := Wood_Ada;
+               when 'o' =>
+                  Val := Grey_Column;
+               when '.' =>
+                  Val := Light;
                when others =>
                   raise Constraint_Error;
             end case;
@@ -100,7 +104,7 @@ package body Playground is
          Current.X := Initial_X + (X - Initial_X) * Ratio;
          Current.Y := Initial_Y + (Y - Initial_Y) * Ratio;
 
-         Draw;
+         Draw_Frame;
       end loop;
 
       Start := Start + Total_T;
@@ -137,7 +141,7 @@ package body Playground is
             Current.Angle := Initial_Angle + Degree (Float (Delta_A) * Ratio);
          end if;
 
-         Draw;
+         Draw_Frame;
       end loop;
 
       Start := Start + Total_T;
@@ -156,7 +160,7 @@ package body Playground is
       Uncompress;
 
       --  Initialize the raycasting engine
-      Initialize_Tables;
+      Initialize;
 
       Start := Clock;
 
@@ -167,10 +171,10 @@ package body Playground is
                   Do_Move_To (Mov.X, Mov.Y);
 
                when Turn_Left =>
-                  Do_Turn (Mov.Angle, False);
+                  Do_Turn (-Mov.Angle, True);
 
                when Turn_Right =>
-                  Do_Turn (Mov.Angle, True);
+                  Do_Turn (-Mov.Angle, False);
 
             end case;
          end loop;

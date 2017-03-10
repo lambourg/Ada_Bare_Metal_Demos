@@ -21,33 +21,10 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Last_Chance_Handler;
-pragma Unreferenced (Last_Chance_Handler);
+package Renderer is
 
+   procedure Initialize;
 
-with STM32.Board;           use STM32.Board;
-with STM32.SDRAM;
-with HAL.Bitmap;
-with HAL.Framebuffer;       use HAL.Framebuffer;
+   procedure Draw_Frame;
 
-with Playground;            use Playground;
-
---  A simple raycasting demo
-procedure Wolf_Demo
-is
-begin
-   STM32.SDRAM.Initialize;
-   Display.Initialize (HAL.Framebuffer.Landscape, HAL.Framebuffer.Polling);
-   Display.Initialize_Layer
-     (Layer  => 1,
-      Mode   => Playground.Color_Mode);
-   Display.Initialize_Layer
-     (Layer  => 2,
-      Mode   => HAL.Bitmap.ARGB_1555,
-      X      => 5,
-      Y      => 5,
-      Width  => 25 * 12, --  25 characters
-      Height => 5 * 12); --  5 lines
-
-   Playground.Play;
-end Wolf_Demo;
+end Renderer;

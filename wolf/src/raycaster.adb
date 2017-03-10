@@ -21,146 +21,21 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with System;
-with Interfaces;                        use Interfaces;
-
-with HAL.Bitmap;                        use HAL.Bitmap;
-
-with Playground;                        use Playground;
-with Textures.Greystone;
-with Textures.Greyada;
-with Textures.Greystone_Dark;
-with Textures.Greyada_Dark;
-with Textures.Redbrick;
-with Textures.Redada;
-with Textures.Redbrick_Dark;
-with Textures.Redada_Dark;
-with Textures.Colorstone;
-with Textures.Colorada;
-with Textures.Colorstone_Dark;
-with Textures.Colorada_Dark;
-with Textures.Wood;
-with Textures.Woodada;
-with Textures.Wood_Dark;
-with Textures.Woodada_Dark;
-
-with Cos;                               use Cos;
+with Playground;     use Playground;
 
 package body Raycaster is
 
-   type Vector is record
-      X : Float;
-      Y : Float;
-   end record;
+   X_Next_Table : array (Degree) of Float;
+   Y_Next_Table : array (Degree) of Float;
 
-   Texture_Size : constant := Textures.Texture'Length (1);
-
-   --  1 pixel = 1/10 degree
-   FOV_Vect : array (0 .. LCD_W - 1) of Degree;
-
-   Sin_Table : array (Cos_Table'Range) of Float;
-
-   type Column_Pixels is array (0 .. LCD_H - 1) of HAL.UInt16 with Pack;
-
-   --  Column_Info is used to save informations on the last drawn column.
-   --  It is used to speed-up the calculation in case the current column to
-   --  draw is identical to the previously drawn one.
-   type Column_Info is record
-      Tile_X      : Natural := 0;
-      Tile_Scale  : Natural := 0;
-      Tile_Kind   : Cell    := Empty;
-      Prev_Col    : Natural := 0;
-      Prev_Top    : Integer := 0;
-      Prev_Height : Integer := 0;
-      Column      : Column_Pixels;
-      Col_Buffer  : Bitmap_Buffer := HAL.Bitmap.Null_Buffer;
-   end record;
-
-   --  Pre-calculated background, representing roof and ceiling with colors
-   --  modified by the Fog
-   Bg  : Column_Pixels;
-
-   --  Fog support
-   Max_Fog_Dist  : constant := 18; --  Maximum fog distance
-   subtype Fog_Distance is Unsigned_32 range 0 .. Max_Fog_Dist * 128;
-   Grey_Values   : array (Fog_Distance) of Unsigned_32;
-   Mult_Values   : array (Fog_Distance) of Unsigned_32;
-   Fog_Precision : constant := 1000;
-
-   function To_Unit_Vector (Angle : Degree) return Vector with Inline_Always;
-   function Sin (Angle : Degree) return Float with Inline_Always;
-   function Tan (Angle : Degree) return Float with Inline_Always;
-   function Arctan (F : Float) return Degree with Inline_Always;
-
-   procedure Draw_Column
-     (Col  : Natural;
-      Buf  : HAL.Bitmap.Bitmap_Buffer'Class;
-      Tmp  : in out Column_Info);
-
-   procedure Distance
-     (Pos      : Position;
-      Vert_Hit : out Boolean;
-      Offset   : out Float;
-      Dist     : out Float;
-      Tile     : out Cell)
-     with Inline_Always;
-
-   function Bg_Color
-     (Base : Unsigned_16;
-      Y    : Natural) return Unsigned_16
-     with Inline_Always;
-
-   function Tile_Color
-     (Tile     : Cell;
-      X, Y     : Natural;
-      Darken   : Boolean) return Unsigned_16
-     with Inline_Always, Pure_Function;
-
-   --------------------
-   -- To_Unit_Vector --
-   --------------------
-
-   function To_Unit_Vector (Angle : Degree) return Vector is
-   begin
-      return (Cos_Table (Angle),
-              -Sin_Table (Angle)); --  -sin (angle)
-   end To_Unit_Vector;
-
-   ---------
-   -- Sin --
-   ---------
-
-   function Sin (Angle : Degree) return Float
-   is
-   begin
-      return Cos_Table (Angle + 2700);
-   end Sin;
-
-   ---------
-   -- Tan --
-   ---------
-
-   function Tan (Angle : Degree) return Float
-   is
-   begin
-      return Sin (Angle) / Cos_Table (Angle);
-   end Tan;
-
-   ------------
-   -- Arctan --
-   ------------
-
-   function Arctan (F : Float) return Degree
-   is
-      --  Very dumb version, but OK as we're using it only during init
-      A : Degree := 2700; -- -Pi/2
-   begin
-      while Tan (A) < F loop
-         A := A + 1;
-      end loop;
-
-      return A;
-   end Arctan;
+   procedure Trace_Check
+     (X, Y          : Natural;
+      Distance      : Float;
+      Offset        : Float;
+      Vertical      : Boolean;
+      Ray           : out Trace_Point;
+      Visible_Tiles : in out Visible_Elements;
+      Done          : out Boolean);
 
    -----------------------
    -- Initialize_Tables --
@@ -168,498 +43,221 @@ package body Raycaster is
 
    procedure Initialize_Tables
    is
-      X0, Xn     : Float;
-      X          : Float;
-      FOV        : constant Cos.Degree :=
-                     2 * Arctan
-                       (Float (LCD_W) / (2.0 * Height_Multiplier));
+      X0 : constant Float := Tan (FOV / 2);
 
    begin
-      X0 := Tan (-FOV / 2);
-      Xn := -X0;
-
       --  FOV vector
       for Col in FOV_Vect'Range loop
          --  Calculate the X on the virtual screen
          --  Left to right is decreasing angles
-         X := Xn + Float (Col) / Float (FOV_Vect'Length) * (X0 - Xn);
          --  and find the angle of that pixel
-         FOV_Vect (Col) := Arctan (X);
+         FOV_Vect (Col) :=
+           Arctan (Float (Col) / Float (FOV_Vect'Length) * (2.0 * X0) - X0);
       end loop;
 
-      for Angle in Sin_Table'Range loop
-         Sin_Table (Angle) := Sin (Angle);
-      end loop;
-
-      for J in Grey_Values'Range loop
-         declare
-            Dist  : constant Float := Float (J) / 128.0;
-            Ratio : constant Float :=
-                      (if Dist >= Float (Max_Fog_Dist) then 1.0
-                       else Sqrt (Dist / Float (Max_Fog_Dist)));
-         begin
-            Grey_Values (J) := Unsigned_32 (48.0 * Ratio * Float (Fog_Precision));
-            Mult_Values (J) := Unsigned_32 ((1.0 - Ratio) * Float (Fog_Precision));
-         end;
-      end loop;
-
-      for J in Bg'Range loop
-         if J < LCD_H / 2 then
-            Bg (J) := Bg_Color
-              (Unsigned_16 (Bitmap_Color_To_Word (Color_Mode, Sky_Blue)), J);
+      for Angle in X_Next_Table'Range loop
+         --  X_Next_Table: X increase when Y increases by 1.
+         --  Y_Next_Table: Y increase when X increases by 1.
+         if Angle = 0 or else Angle = 1800 then
+            X_Next_Table (Angle) := Float'Last;
+            Y_Next_Table (Angle) := 0.0;
+         elsif Angle = 900 or else Angle = 2700 then
+            X_Next_Table (Angle) := 0.0;
+            Y_Next_Table (Angle) := Float'Last;
          else
-            Bg (J) := Bg_Color (2#00010_000100_00010#, J);
+            X_Next_Table (Angle) := 1.0 / Tan (Angle);
+            Y_Next_Table (Angle) := Tan (Angle);
          end if;
       end loop;
    end Initialize_Tables;
 
-   --------------
-   -- Distance --
-   --------------
+   -----------------
+   -- Trace_Check --
+   -----------------
 
-   procedure Distance
-     (Pos      : Position;
-      Vert_Hit : out Boolean;
-      Offset   : out Float;
-      Dist     : out Float;
-      Tile     : out Cell)
+   procedure Trace_Check
+     (X, Y          : Natural;
+      Distance      : Float;
+      Offset        : Float;
+      Vertical      : Boolean;
+      Ray           : out Trace_Point;
+      Visible_Tiles : in out Visible_Elements;
+      Done          : out Boolean)
    is
-      f_Dist_X, f_Dist_Y : Float;
-      --  Distance between origin and the first vertical or horizontal line
-      dist_X, dist_Y     : Float;
-      d_Dist_X, d_Dist_Y : Float;
-      --  Distance between two consecutive vertical/horizontal line along the
-      --  ray
-      Step_X, Step_Y     : Integer;
-      --  Next square in map in X or Y direction (in the range -1 .. 1)
-      Map_X, Map_Y       : Integer;
-      --  Position in map coordinates
-      Ray_Vect           : constant Vector := To_Unit_Vector (Pos.Angle);
-      --  Unitary vector representing the ray cast
+      Tile : constant Cell := Map (Y, X);
 
    begin
-      Map_X := Natural (Float'Floor (Pos.X));
-      Map_Y := Natural (Float'Floor (Pos.Y));
 
-      --  Distance along the ray between two consecutive X coordinates
-      d_Dist_X := abs (1.0 / Ray_Vect.X);
-      --  Same for Y
-      d_Dist_Y := abs (1.0 / Ray_Vect.Y);
+      if Tile = Empty then
+         Done := False;
+         return;
 
-      if Ray_Vect.X < 0.0 then
-         Step_X := -1;
-         f_Dist_X := (Pos.X - Float'Floor (Pos.X)) * d_Dist_X;
+      elsif Tile in Wall_Cell then
+         Ray.Dist := Distance;
+         Ray.Tile := Tile;
+         Ray.Offset := Offset;
+         Ray.Vertical_Hit := Vertical;
+         Done := True;
+         return;
+
       else
-         Step_X := 1;
-         f_Dist_X := (Float'Ceiling (Pos.X) - Pos.X) * d_Dist_X;
-      end if;
+         Visible_Tiles (Y, X) := True;
+         Done := False;
 
-      if Ray_Vect.Y < 0.0 then
-         Step_Y := -1;
-         f_Dist_Y := (Pos.Y - Float'Floor (Pos.Y)) * d_Dist_Y;
-      else
-         Step_Y := 1;
-         f_Dist_Y := (Float'Ceiling (Pos.Y) - Pos.Y) * d_Dist_Y;
+         return;
       end if;
+   end Trace_Check;
 
-      dist_X := f_Dist_X;
-      dist_Y := f_Dist_Y;
+   -----------
+   -- Trace --
+   -----------
+
+   procedure Trace
+     (Col           : LCD_Column;
+      Visible_Tiles : in out Visible_Elements;
+      Ray           :    out Trace_Point)
+   is
+      type Vector is record
+         X : Float;
+         Y : Float;
+      end record;
+
+      type Quadrant is
+        (Q_0_89,
+         Q_90_179,
+         Q_180_269,
+         Q_240_359);
+
+      X_Tile_Steps : constant array (Quadrant) of Integer :=
+                       (1, -1, -1, 1);
+      Y_Tile_Steps : constant array (Quadrant) of Integer :=
+                       (1, 1, -1, -1);
+
+      Angle       : constant Degree := Current.Angle + FOV_Vect (Col);
+      Q           : constant Quadrant :=
+                      (if Angle < 900 then Q_0_89
+                       elsif Angle < 1800 then Q_90_179
+                       elsif Angle < 2700 then Q_180_269
+                       else Q_240_359);
+
+      X_Step      : constant Integer := X_Tile_Steps (Q);
+      Y_Step      : constant Integer := Y_Tile_Steps (Q);
+
+      Ray_Vect    : constant Vector := (Cos (Angle),
+                                        Sin (Angle));
+      --  Unitary vector representing the ray cast
+
+      dX_Ray_Dist : constant Float := abs (1.0 / Ray_Vect.X);
+      dY_Ray_Dist : constant Float := abs (1.0 / Ray_Vect.Y);
+      --  Distance between two consecutive vertical/horizontal line along the
+      --  ray
+
+      X_Inc       : constant Float :=
+                      Float (Y_Step) * X_Next_Table (Angle);
+      Y_Inc       : constant Float :=
+                      Float (X_Step) * Y_Next_Table (Angle);
+      --  Amount of increase in X/Y coordinate when the other one does one
+      --  step.
+
+      X_Ray_Dist  : Float :=
+                      (if X_Step = -1
+                       then Current.X - Float'Floor (Current.X)
+                       else Float'Ceiling (Current.X) - Current.X) *
+                      dX_Ray_Dist;
+      Y_Ray_Dist  : Float :=
+                      (if Y_Step = -1
+                       then Current.Y - Float'Floor (Current.Y)
+                       else Float'Ceiling (Current.Y) - Current.Y) *
+                      dY_Ray_Dist;
+      --  Distances along the ray to the next X or Y position
+
+      Map_X       : Integer := Natural (Float'Floor (Current.X));
+      Map_Y       : Integer := Natural (Float'Floor (Current.Y));
+      --  Position in map coordinates
+
+      X_Intercept : Float :=
+                      (if Y_Step = -1
+                       then Current.Y - Float'Floor (Current.Y)
+                       else Float'Ceiling (Current.Y) - Current.Y) *
+                      X_Inc + Current.X;
+      Y_Intercept : Float :=
+                      (if X_Step = -1
+                       then Current.X - Float'Floor (Current.X)
+                       else Float'Ceiling (Current.X) - Current.X) *
+                      Y_Inc + Current.Y;
+
+      Done        : Boolean;
+
+   begin
+      Ray.Col := Col;
 
       loop
          --  Check the next distance (shortest)
-         if dist_X < dist_Y then
+         if X_Ray_Dist < Y_Ray_Dist then
             --  Move to the next X tile
-            Map_X := Map_X + Step_X;
-            Vert_Hit := True;
-            --  If not empty, then we found it
-            exit when Map (Map_Y, Map_X) /= Empty;
-            --  Set the tentative distance for the next X tile
-            dist_X := dist_X + d_Dist_X;
+            Map_X       := Map_X + X_Step;
+
+            Trace_Check
+              (X             => Map_X,
+               Y             => Map_Y,
+               Distance      => X_Ray_Dist,
+               Offset        => Y_Intercept - Float'Floor (Y_Intercept),
+               Vertical      => True,
+               Ray           => Ray,
+               Visible_Tiles => Visible_Tiles,
+               Done          => Done);
+
+            if Done then
+               if X_Step < 0 and then Ray.Offset /= 0.0 then
+                  Ray.Offset := 1.0 - Ray.Offset;
+               end if;
+
+               return;
+            end if;
+
+            X_Ray_Dist  := X_Ray_Dist + dX_Ray_Dist;
+            Y_Intercept := Y_Intercept + Y_Inc;
+
          else
-            Map_Y := Map_Y + Step_Y;
-            Vert_Hit := False;
-            exit when Map (Map_Y, Map_X) /= Empty;
-            dist_Y := dist_Y + d_Dist_Y;
+            --  Move to the next Y tile
+            Map_Y       := Map_Y + Y_Step;
+
+            Trace_Check
+              (X             => Map_X,
+               Y             => Map_Y,
+               Distance      => Y_Ray_Dist,
+               Offset        => X_Intercept - Float'Floor (X_Intercept),
+               Vertical      => False,
+               Ray           => Ray,
+               Visible_Tiles => Visible_Tiles,
+               Done          => Done);
+
+            if Done then
+               if Y_Step > 0 and then Ray.Offset /= 0.0 then
+                  Ray.Offset := 1.0 - Ray.Offset;
+               end if;
+
+               return;
+            end if;
+
+            Y_Ray_Dist  := Y_Ray_Dist + dY_Ray_Dist;
+            X_Intercept := X_Intercept + X_Inc;
          end if;
       end loop;
+   end Trace;
 
-      Tile := Map (Map_Y, Map_X);
+   ----------------
+   -- Trace_Rays --
+   ----------------
 
-      if Vert_Hit then
-         Dist := dist_X;
-         --  Calculate the offset  (in X Coordinate) of the hit relative
-         --  to the current tile (used for finding the proper column for the
-         --  texture).
-         --  First, we calculate the distance of the point where the ray hit
-         --  the wall form (0,0): Sin (Angle) * dist + Initial Y position
-         Offset := Pos.Y - Sin_Table (Pos.Angle) * dist_X;
-         --  Offset from the tile's coordinates:
-         Offset := Offset - Float'Floor (Offset);
-
-         if Step_X < 0 then
-            Offset := 1.0 - Offset;
-
-            if Offset = 1.0 then
-               Offset := 0.0;
-            end if;
-         end if;
-
-      else
-         Dist := dist_Y;
-         --  Similar to above, but where we use the sinus: so
-         --  -cos (Pos.Angle - Pi / 2), e.g. 900 in tenth of degrees
-         Offset := Pos.X + Cos_Table (Pos.Angle) * dist_Y;
-         Offset := Offset - Float'Floor (Offset);
-
-         if Step_Y > 0 then
-            Offset := 1.0 - Offset;
-
-            if Offset = 1.0 then
-               Offset := 0.0;
-            end if;
-         end if;
-      end if;
-
-      --  Multiply by Cos (Pos.Angle - Current.Angle) to fix the fisheye
-      --  effect: we wnat a vertical projection on the virtual screen, that is
-      --  perpendicular to the current player's angle
-      Dist := Cos_Table (Pos.Angle - Current.Angle) * Dist;
-   end Distance;
-
-   --------------
-   -- Bg_Color --
-   --------------
-
-   function Bg_Color
-     (Base : Unsigned_16;
-      Y    : Natural) return Unsigned_16
-   is
-      type RGB_Color is record
-         R : HAL.UInt5;
-         G : HAL.UInt6;
-         B : HAL.UInt5;
-      end record with Size => 16;
-
-      for RGB_Color use record
-         R at 0 range 11 .. 15;
-         G at 0 range 5 .. 10;
-         B at 0 range 0 .. 4;
-      end record;
-
-      Middle : constant := LCD_H / 2;
-
-      Scale  : constant Unsigned_32 :=
-                 (if Y <= Middle then Unsigned_32 (Middle - Y) * 2
-                  else Unsigned_32 (Y - Middle) * 3);
-      Dist   : constant Unsigned_32 :=
-                 (if Scale = 0 then Mult_Values'Last + 1
-                  else Unsigned_32 (128.0 * Height_Multiplier) / Scale);
-      Col    : Unsigned_16;
-      RGB    : RGB_Color with Address => Col'Address;
-      R      : HAL.UInt5;
-      G      : HAL.UInt6;
-      B      : HAL.UInt5;
-      use HAL;
-
-   begin
-      if Dist in Mult_Values'Range then
-         Col := Base;
-         R  := UInt5 ((Mult_Values (Dist) * Unsigned_32 (RGB.R) +
-                        Shift_Right (Grey_Values (Dist), 1)) / Fog_Precision);
-         G  := UInt6 ((Mult_Values (Dist) * Unsigned_32 (RGB.G) +
-                        Grey_Values (Dist)) / Fog_Precision);
-         B  := UInt5 ((Mult_Values (Dist) * Unsigned_32 (RGB.B) +
-                        Shift_Right (Grey_Values (Dist), 1)) / Fog_Precision);
-         RGB := (R, G, B);
-      else
-         RGB := (24, 48, 24);
-      end if;
-
-      return Col;
-   end Bg_Color;
-
-   -----------
-   -- Color --
-   -----------
-
-   function Tile_Color
-     (Tile     : Cell;
-      X, Y     : Natural;
-      Darken   : Boolean) return Unsigned_16
+   procedure Trace_Rays
+     (Visible_Tiles : out Visible_Elements;
+      Tracers       : out Trace_Points)
    is
    begin
-      case Tile is
-         when Empty =>
-            return 0;
-         when Grey_Stone =>
-            if not Darken then
-               return Textures.Greystone.Bmp (Y, X);
-            else
-               return Textures.Greystone_Dark.Bmp (Y, X);
-            end if;
-         when Grey_Ada =>
-            if not Darken then
-               return Textures.Greyada.Bmp (Y, X);
-            else
-               return Textures.Greyada_Dark.Bmp (Y, X);
-            end if;
-         when Red_Brick =>
-            if not Darken then
-               return Textures.Redbrick.Bmp (Y, X);
-            else
-               return Textures.Redbrick_Dark.Bmp (Y, X);
-            end if;
-         when Red_Ada =>
-            if not Darken then
-               return Textures.Redada.Bmp (Y, X);
-            else
-               return Textures.Redada_Dark.Bmp (Y, X);
-            end if;
-         when Color_Stone =>
-            if not Darken then
-               return Textures.Colorstone.Bmp (Y, X);
-            else
-               return Textures.Colorstone_Dark.Bmp (Y, X);
-            end if;
-         when Color_Ada =>
-            if not Darken then
-               return Textures.Colorada.Bmp (Y, X);
-            else
-               return Textures.Colorada_Dark.Bmp (Y, X);
-            end if;
-         when Wood =>
-            if not Darken then
-               return Textures.Wood.Bmp (Y, X);
-            else
-               return Textures.Wood_Dark.Bmp (Y, X);
-            end if;
-         when Wood_Ada =>
-            if not Darken then
-               return Textures.Woodada.Bmp (Y, X);
-            else
-               return Textures.Woodada_Dark.Bmp (Y, X);
-            end if;
-      end case;
-   end Tile_Color;
-
-   -----------------
-   -- Draw_Column --
-   -----------------
-
-   procedure Draw_Column
-     (Col : Natural;
-      Buf : Bitmap_Buffer'Class;
-      Tmp : in out Column_Info)
-   is
-      Col_Pos  : Position := Current;
-      Off      : Float;
-      Dist     : Float;
-      Tile     : Cell;
-      Side     : Boolean;
-      Height   : Natural;
-      Scale    : Natural;
-
-      Virt_Top : Integer;
-      Scr_Top  : Integer;
-
-      X, Y, dY : Natural;
-
-      use type System.Address;
-
-   begin
-      Col_Pos.Angle := Current.Angle + FOV_Vect (Col);
-      Distance
-        (Pos      => Col_Pos,
-         Vert_Hit => Side,
-         Offset   => Off,
-         Dist     => Dist,
-         Tile     => Tile);
-
-      if Tile = Empty then
-         return;
-      end if;
-
-      if Tmp.Col_Buffer.Addr = System.Null_Address then
-         Tmp.Col_Buffer :=
-           (Addr       => Tmp.Column'Address,
-            Width      => 1,
-            Height     => LCD_H,
-            Color_Mode => Color_Mode,
-            Swapped    => Display.Is_Swapped);
-      end if;
-
-      X := Natural
-        (Float'Floor (Off * Float (Textures.Texture'Length (2))));
-
-      Scale := Natural (Height_Multiplier / Dist);
-      Virt_Top := (LCD_H - Scale * 4 / 3) / 2;
-
-      if Virt_Top < 0 then
-         dY := -Virt_Top;
-         Scr_Top := 0;
-
-         if Virt_Top + Scale >= LCD_H then
-            Height := LCD_H;
-         else
-            Height := Virt_Top + Scale;
-         end if;
-      else
-         dY := 0;
-         Scr_Top := Virt_Top;
-         Height := Scale;
-      end if;
-
-      if Height = 0 then
-         return;
-      end if;
-
-      --  Do not recompute the temp column if we have an identical situation
-      if Tmp.Tile_Scale /= Scale
-        or else Tmp.Tile_X /= X
-        or else Tmp.Tile_Kind /= Tile
-      then
-         --  Fill top and bottom
-         if Scr_Top > 0 then
-            Tmp.Column (Tmp.Prev_Top .. Scr_Top - 1) :=
-              Bg (Tmp.Prev_Top .. Scr_Top - 1);
-         end if;
-
-         if Scr_Top + Height < LCD_H then
-            Tmp.Column
-              (Scr_Top + Height .. Tmp.Prev_Top + Tmp.Prev_Height - 1) :=
-              Bg (Scr_Top + Height .. Tmp.Prev_Top + Tmp.Prev_Height - 1);
-         end if;
-
-         declare
-            Color : Unsigned_16;
-            type RGB_Color is record
-               R : HAL.UInt5;
-               G : HAL.UInt6;
-               B : HAL.UInt5;
-            end record with Size => 16;
-
-            for RGB_Color use record
-               R at 0 range 11 .. 15;
-               G at 0 range 5 .. 10;
-               B at 0 range 0 .. 4;
-            end record;
-
-            Grey     : constant HAL.UInt6 := 48;
-            Grey5    : constant HAL.UInt5 := 24;
-            RGB      : RGB_Color with Address => Color'Address;
-            Distn    : constant Unsigned_32 := Unsigned_32 (128.0 * Dist);
-
-         begin
-            if Distn not in Mult_Values'Range then
-               RGB := (Grey5, Grey, Grey5);
-               Tmp.Column (Scr_Top .. Scr_Top + Height - 1) :=
-                 (others => Color);
-
-            else
-               declare
-                  procedure Handle_Mist;
-
-                  M   : constant Unsigned_32 := Mult_Values (Distn);
-                  Gr6 : constant Unsigned_32 := Grey_Values (Distn);
-                  Gr5 : constant Unsigned_32 := Shift_Right (Gr6, 1);
-
-                  procedure Handle_Mist
-                  is
-                     use HAL;
-                  begin
-                     RGB :=
-                       (UInt5 ((M * Unsigned_32 (RGB.R) + Gr5) / Fog_Precision),
-                        UInt6 ((M * Unsigned_32 (RGB.G) + Gr6) / Fog_Precision),
-                        UInt5 ((M * Unsigned_32 (RGB.B) + Gr5) / Fog_Precision));
-                  end Handle_Mist;
-
-               begin
-
-                  if Scale <= Texture_Size then
-                     --  Shrinking case
-                     for Row in 0 .. Height - 1 loop
-                        Y := ((Row + dY) * Texture_Size + Scale / 2) / Scale;
-                        Color := Tile_Color (Tile, X, Y, Side);
-                        Handle_Mist;
-                        Tmp.Column (Scr_Top + Row) := Color;
-                     end loop;
-
-                  else
-                     --  Expanding case
-                     declare
-                        Y0      : constant Natural :=
-                                    (dY * Texture_Size) / Scale;
-                        Y1      : constant Natural :=
-                                    ((Height - 1 + dY) * Texture_Size) / Scale;
-                        Row     : Natural;
-                        R_Next  : Natural := 0;
-
-                     begin
-                        for Y in Y0 .. Y1 loop
-                           Color := Tile_Color (Tile, X, Y, Side);
-                           Handle_Mist;
-                           Row := R_Next;
-
-                           if Y = Y1 then
-                              R_Next := Height;
-                           else
-                              R_Next := ((Y + 1) * Scale) / Texture_Size - dY;
-                           end if;
-
-                           Tmp.Column (Scr_Top + Row .. Scr_Top + R_Next - 1) := (others => Color);
-                        end loop;
-                     end;
-                  end if;
-               end;
-            end if;
-         end;
-
-         Tmp.Tile_X      := X;
-         Tmp.Tile_Scale  := Scale;
-         Tmp.Tile_Kind   := Tile;
-         Tmp.Prev_Col    := Col;
-         Tmp.Prev_Top    := Scr_Top;
-         Tmp.Prev_Height := Height;
-
-         if Display.Use_Copy_Rect_Always then
-            Copy_Rect
-              (Src_Buffer  => Tmp.Col_Buffer,
-               X_Src       => 0,
-               Y_Src       => 0,
-               Dst_Buffer  => Buf,
-               X_Dst       => Col,
-               Y_Dst       => 0,
-               Width       => 1,
-               Height      => LCD_H,
-               Synchronous => False);
-         else
-            for J in Tmp.Column'Range loop
-               Buf.Set_Pixel (Col, J, Unsigned_32 (Tmp.Column (J)));
-            end loop;
-         end if;
-      else
-         Copy_Rect
-           (Src_Buffer  => Buf,
-            X_Src       => Tmp.Prev_Col,
-            Y_Src       => 0,
-            Dst_Buffer  => Buf,
-            X_Dst       => Col,
-            Y_Dst       => 0,
-            Width       => 1,
-            Height      => LCD_H,
-            Synchronous => False,
-            Clean_Cache => False);
-      end if;
-   end Draw_Column;
-
-   package Tasks is
-
-      procedure Draw;
-
-   end Tasks;
-
-   package body Tasks is separate;
-
-   procedure Draw renames Tasks.Draw;
+      for Col in Tracers'Range loop
+         Trace (Col, Visible_Tiles, Tracers (Col));
+      end loop;
+   end Trace_Rays;
 
 end Raycaster;
