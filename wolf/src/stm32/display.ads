@@ -62,6 +62,8 @@ package Display is
 
    procedure Flush_Cache (Buffer : HAL.Bitmap.Bitmap_Buffer'Class);
 
+   procedure Wait_Transfer with Inline_Always;
+
 private
 
    function Get_Color_Mode

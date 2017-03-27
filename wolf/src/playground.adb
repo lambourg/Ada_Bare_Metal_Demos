@@ -64,13 +64,19 @@ package body Playground is
                when '6' =>
                   Val := Grey_Ada;
                when '7' =>
-                  Val := Wood;
+                  Val := Cell_Wood;
                when '8' =>
                   Val := Wood_Ada;
                when 'o' =>
                   Val := Grey_Column;
                when '.' =>
-                  Val := Light;
+                  Val := Cell_Light;
+               when 'b' =>
+                  Val := Cell_Barrel;
+               when '*' =>
+                  Val := Cell_Plant;
+               when 'O' =>
+                  Val := Cell_Table;
                when others =>
                   raise Constraint_Error;
             end case;

@@ -49,4 +49,7 @@ begin
    Put_Line ("Now starting ...");
 
    Playground.Play;
+exception
+   when others =>
+      Ada.Text_IO.Put_Line ("Exception caught in main");
 end Wolf_Demo;

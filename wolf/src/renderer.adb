@@ -32,11 +32,14 @@ with Display;    use Display;
 with Math;       use Math;
 with Playground; use Playground;
 with Raycaster;  use Raycaster;
-with Textures;
+with Textures;   use Textures;
 
 --  Visible tiles
+with Textures.Barrel;
 with Textures.Column;
 with Textures.Light;
+with Textures.Plant;
+with Textures.Table;
 
 --  Walls
 with Textures.Greystone;
@@ -61,8 +64,8 @@ package body Renderer is
    type Column_Pixels is array (0 .. LCD_H - 1) of HAL.UInt16 with Pack;
 
    type Scaler is record
-      --  Screen top
-      Scr_Top  : Integer;
+--        --  Screen top
+--        Scr_Top  : Integer;
       --  Offset from screen top, when the texture is partially off-screen
       dY       : Natural;
       --  Screen height
@@ -239,8 +242,9 @@ package body Renderer is
       Middle : constant := LCD_H / 2;
 
       Scale  : constant UInt32 :=
-                 (if Y <= Middle then UInt32 (Middle - Y) * 2
-                  else UInt32 (Y - Middle) * 3);
+                 UInt32 (abs (Middle - Y) * 2);
+--                   (if Y <= Middle then UInt32 (Middle - Y) * 2
+--                    else UInt32 (Y - Middle) * 3);
       Dist   : constant Fog_Distance :=
                  (if Scale = 0 then Fog_Distance'Last
                   else As_Fog_Distance (Height_Multiplier / Float (Scale)));
@@ -282,8 +286,14 @@ package body Renderer is
             return null;
          when Grey_Column =>
             return Textures.Column.Bmp (X)'Access;
-         when Light =>
+         when Cell_Barrel =>
+            return Textures.Barrel.Bmp (X)'Access;
+         when Cell_Light =>
             return Textures.Light.Bmp (X)'Access;
+         when Cell_Plant =>
+            return Textures.Plant.Bmp (X)'Access;
+         when Cell_Table =>
+            return Textures.Table.Bmp (X)'Access;
          when Grey_Stone =>
             if not Darken then
                return Textures.Greystone.Bmp (X)'Access;
@@ -320,7 +330,7 @@ package body Renderer is
             else
                return Textures.Colorada_Dark.Bmp (X)'Access;
             end if;
-         when Wood =>
+         when Cell_Wood =>
             if not Darken then
                return Textures.Wood.Bmp (X)'Access;
             else
@@ -360,20 +370,13 @@ package body Renderer is
       Ret.Dist := Cos (Angle) * Dist;
 
       Ret.Scale := Natural (Height_Multiplier / Ret.Dist);
-      Virt_Top := (LCD_H - Ret.Scale * 4 / 3) / 2;
+      Virt_Top  := (LCD_H - Ret.Scale) / 2;
 
-      if Virt_Top < 0 then
+      if Ret.Scale > LCD_H then
          Ret.dY := -Virt_Top;
-         Ret.Scr_Top := 0;
-
-         if Virt_Top + Ret.Scale >= LCD_H then
-            Ret.Height := LCD_H;
-         else
-            Ret.Height := Virt_Top + Ret.Scale;
-         end if;
+         Ret.Height := LCD_H;
       else
          Ret.dY := 0;
-         Ret.Scr_Top := Virt_Top;
          Ret.Height := Ret.Scale;
       end if;
 
@@ -403,10 +406,14 @@ package body Renderer is
             G : UInt16 := Shift_Right (Color and 2#00000_111111_00000#, 5);
             B : UInt16 := Color and 2#00000_000000_11111#;
          begin
-            R := UInt16 (Shift_Right ((M * R + Gr5), 7));
-            G := UInt16 (Shift_Right ((M * G + Gr6), 7));
-            B := UInt16 (Shift_Right ((M * B + Gr5), 7));
-            Color := (Shift_Left (R, 11) or Shift_Left (G, 5) or B);
+            --  We divide by 2**7 (so shift right of 7 bit) but then the value
+            --  is 5 bit at position 11, this means a shift left of 11 - 7
+            R := UInt16 (Shift_Left ((M * R + Gr5) and 16#1F80#, 11 - 7));
+            --  Similar to above: shift right of 7 bits + shift left of 5 bits
+            G := UInt16 (Shift_Right ((M * G + Gr6) and 16#3F80#, 7 - 5));
+            B := UInt16 (Shift_Right ((M * B + Gr5) and 16#1F80#, 7));
+
+            Color := R or G or B;
          end;
       end if;
    end Handle_Mist;
@@ -425,6 +432,7 @@ package body Renderer is
 
       Color   : UInt16;
       Texture : Textures.Texture_Column_Access;
+      Margin  : Natural;
 
       use type System.Address;
 
@@ -469,21 +477,22 @@ package body Renderer is
          return;
       end if;
 
-      --  Fill top and bottom
-      if Cache.Prev_Top < S.Scr_Top then
-         Cache.Column (Cache.Prev_Top .. S.Scr_Top - 1) :=
-           Bg (Cache.Prev_Top .. S.Scr_Top - 1);
-      end if;
+--        if Display.Use_Copy_Rect_Always then
+--           --  Wait for latest DMA transfers to terminate before overriding the
+--           --  source buffer
+--           Display.Wait_Transfer;
+--        end if;
 
-      if S.Height < Cache.Prev_Height then
-         Cache.Column
-           (S.Scr_Top + S.Height .. Cache.Prev_Top + Cache.Prev_Height - 1) :=
-           Bg (S.Scr_Top + S.Height .. Cache.Prev_Top + Cache.Prev_Height - 1);
+      --  Fill top and bottom
+      Margin := (LCD_H - S.Height) / 2;
+      if Margin > Cache.Prev_Top then
+         Cache.Column (Cache.Prev_Top .. Margin - 1) :=
+           Bg (Cache.Prev_Top .. Margin - 1);
       end if;
 
       if S.Dist >= Float (Max_Fog_Dist) then
          --  Fog is complete, just fill with the grey value
-         Cache.Column (S.Scr_Top .. S.Scr_Top + S.Height - 1) :=
+         Cache.Column (Margin .. Margin + S.Height - 1) :=
            (others => Fog_Color);
 
       else
@@ -501,31 +510,38 @@ package body Renderer is
 
             begin
                for Row in 0 .. S.Height - 1 loop
-                  Y := (Row * Textures.Texture_Size + S.Scale / 2) / S.Scale;
+                  Y := (Row * (Textures.Texture_Size + 1)) / S.Scale;
+                  if Y >= Textures.Texture_Size then
+                     Y := Textures.Texture_Size - 1;
+                  end if;
                   Color := Texture (Y);
                   Handle_Mist (Color, M, Gr5, Gr6);
-                  Cache.Column (S.Scr_Top + Row) := Color;
+                  Cache.Column (Margin + Row) := Color;
                end loop;
             end;
          else
             --  Expanding case
             declare
                Y0      : constant Natural :=
-                           (S.dY * Textures.Texture_Size) / S.Scale;
+                           (if S.dY = 0 then 0
+                            else S.dY * Textures.Texture_Size / S.Scale);
                Y1      : constant Natural :=
-                           ((S.Height - 1 + S.dY) * Textures.Texture_Size) / S.Scale;
+                           (if S.dY = 0 then Textures.Texture_Size - 1
+                            else Textures.Texture_Size - Y0 - 1);
                Row     : Natural;
-               R_Next  : Natural := S.Scr_Top;
+               R_Next  : Natural := Margin;
+               Top     : constant Integer := Margin - S.dY;
 
             begin
                for Y in Y0 .. Y1 loop
                   Row := R_Next;
 
                   if Y = Y1 then
-                     R_Next := S.Scr_Top + S.Height;
+                     R_Next := Margin + S.Height;
                   else
-                     R_Next := S.Scr_Top - S.dY +
-                       ((Y + 1) * S.Scale) / Textures.Texture_Size;
+                     R_Next := Natural'Min
+                       (Top + ((Y + 1) * S.Scale) / Textures.Texture_Size,
+                        Margin + S.Height);
                   end if;
 
                   if R_Next > Row then
@@ -540,16 +556,21 @@ package body Renderer is
          end if;
       end if;
 
-      Display.Flush_Cache (Cache.Col_Buffer);
+      if Cache.Prev_Top + Cache.Prev_Height > Margin + S.Height then
+         Cache.Column
+           (Margin + S.Height .. Cache.Prev_Top + Cache.Prev_Height - 1) :=
+           Bg (Margin + S.Height .. Cache.Prev_Top + Cache.Prev_Height - 1);
+      end if;
 
       Cache.Tile_X      := X;
       Cache.Tile_Scale  := S.Scale;
       Cache.Tile_Kind   := Ray.Tile;
       Cache.Prev_Col    := Ray.Col;
-      Cache.Prev_Top    := S.Scr_Top;
+      Cache.Prev_Top    := Margin;
       Cache.Prev_Height := S.Height;
 
       if Display.Use_Copy_Rect_Always then
+         Display.Flush_Cache (Cache.Col_Buffer);
          Copy_Rect
            (Src_Buffer  => Cache.Col_Buffer,
             X_Src       => 0,
@@ -562,8 +583,8 @@ package body Renderer is
             Synchronous => False,
             Clean_Cache => False);
       else
-         for J in Cache.Column'Range loop
-            Buffer.Set_Pixel (Ray.Col, J, UInt32 (Cache.Column (J)));
+         for J in 0 .. LCD_H - 1 loop
+            Buffer.Set_Pixel (Ray.Col, J, Unsigned_32 (Cache.Column (J)));
          end loop;
       end if;
    end Draw_Wall;
@@ -599,7 +620,11 @@ package body Renderer is
 
                --  To screen coordinate
                dY0 := dXp * Math.Tan (FOV / 2);
-               S.Col := Integer ((dYp + dY0) * Float (LCD_W) / (2.0 * dY0));
+               if dY0 = 0.0 then
+                  S.Col := -1;
+               else
+                  S.Col := Integer ((dYp + dY0) * Float (LCD_W) / (2.0 * dY0));
+               end if;
 
                --  Calculate the on-screen scale
                S.Scale := Get_Scaler (S.Col, S.Dist);
@@ -634,7 +659,6 @@ package body Renderer is
       Rays   : Trace_Points)
    is
       Cache : Column_Info;
-
    begin
       if N_Sprites = 0 then
          return;
@@ -646,24 +670,30 @@ package body Renderer is
          Height     => LCD_H,
          Color_Mode => ARGB_1555,
          Swapped    => Display.Is_Swapped);
+      Cache.Column := (others => 0);
 
       for N in 1 .. N_Sprites loop
          Cache.Prev_Height := LCD_H;
          Cache.Prev_Top    := 0;
 
          declare
-            Tile     : Sprite renames Sprites (N);
-            S        : Scaler renames Tile.Scale;
-            C0       : constant Integer := Tile.Col - S.Scale / 2;
-            C1       : constant Integer := C0 + S.Scale - 1;
-            X        : Integer;
-            Y        : Integer;
-            Prev_Y   : Natural := Natural'Last;
-            Prev_Row : Natural := 0;
-            Color    : HAL.UInt16 := 0;
-            Distn    : constant Fog_Distance := As_Fog_Distance (Tile.Dist);
-            Texture  : Textures.Texture_Column_Access;
-            Transparent : Boolean := True;
+            Tile       : Sprite renames Sprites (N);
+            S          : Scaler renames Tile.Scale;
+            C0         : constant Integer := Tile.Col - S.Scale / 2;
+            C1         : constant Integer := C0 + S.Scale - 1;
+            Margin     : constant Natural := (LCD_H - S.Height) / 2;
+            X          : Integer;
+            Y          : Integer;
+            Color      : HAL.UInt16 := 0;
+            New_Color  : HAL.UInt16;
+            Mist_Color : HAL.UInt16;
+            Distn      : constant Fog_Distance := As_Fog_Distance (S.Dist);
+            M          : constant UInt16 := Mult_Values (Distn);
+            Gr6        : constant UInt16 := Grey_Values (Distn);
+            Gr5        : constant UInt16 := Shift_Right (Gr6, 1);
+            Texture    : Textures.Texture_Column_Access;
+            First      : Integer := -1;
+            Last       : Natural := 0;
 
          begin
             for C in C0 .. C1 loop
@@ -671,94 +701,134 @@ package body Renderer is
                  and then Rays (C).Dist > Tile.Dist
                then
                   X := (C - C0) * Textures.Texture_Size / S.Scale;
-                  Texture := Tile_Column (Tile.Tile, X, False);
 
                   if X /= Cache.Tile_X then
-                     Cache.Column := (others => 0);
-                     Transparent  := True;
+                     Texture := Tile_Column (Tile.Tile, X, False);
 
-                     if S.Height < Textures.Texture_Size then
-                        declare
-                           M        : constant UInt16 := Mult_Values (Distn);
-                           Gr6      : constant UInt16 := Grey_Values (Distn);
-                           Gr5      : constant UInt16 := Shift_Right (Gr6, 1);
-                        begin
-                           --  Shrinking case
-                           for Row in 0 .. S.Height - 1 loop
-                              Y := (Row + S.dY) * Textures.Texture_Size / S.Scale;
-                              Color := Texture (Y);
+                     if First > 0 then
+                        Display.Wait_Transfer;
+                        Cache.Column (0 .. Last - First) := (others => 0);
+                     end if;
 
-                              if Color = 0 then
-                                 --  Transparent
+                     First := -1;
+                     Last  := 0;
+
+                     if S.Height < Texture_Size then
+                        --  Shrinking case
+                        for Row in 0 .. S.Height - 1 loop
+                           Y := (Row + S.dY) * (Texture_Size + 1) / S.Scale;
+
+                           if Y >= Texture_Size then
+                              Y := Texture_Size - 1;
+                           end if;
+
+                           New_Color := Texture (Y);
+
+                           if New_Color = 0 then
+                              --  Transparent
+                              null;
+
+                           else
+                              if First < 0 then
+                                 First := Row;
+                              end if;
+
+                              Last := Row;
+
+                              if New_Color = Color then
+                                 --  Same color as previously, do nothing
                                  null;
 
                               elsif M = Fog_Precision then
-                                 Transparent := False;
-                                 Cache.Column (Row) := Color;
+                                 --  Color is not changed, do nothing
+                                 Mist_Color := New_Color;
 
                               elsif M = 0 then
-                                 Transparent := False;
-                                 Color := 2#1_00000_00000_00000# or
+                                 Mist_Color := 2#1_00000_00000_00000# or
                                    Shift_Left (Gr5, 10) or
                                    Shift_Left (Gr5, 5) or
                                    Gr5;
                               else
-                                 Transparent := False;
                                  declare
                                     R : UInt16 :=
-                                          Shift_Right (Color and 2#0_11111_00000_00000#, 10);
+                                          Shift_Right
+                                            (New_Color and 2#0_11111_00000_00000#,
+                                             10);
                                     G : UInt16 :=
-                                          Shift_Right (Color and 2#0_00000_11111_00000#, 5);
+                                          Shift_Right
+                                            (New_Color and 2#0_00000_11111_00000#,
+                                             5);
                                     B : UInt16 :=
-                                          Color and 2#0_00000_00000_11111#;
+                                          New_Color and 2#0_00000_00000_11111#;
                                  begin
-                                    R := UInt16 (Shift_Right ((M * R + Gr5), 7));
-                                    G := UInt16 (Shift_Right ((M * G + Gr5), 7));
-                                    B := UInt16 (Shift_Right ((M * B + Gr5), 7));
-                                    Cache.Column (Row) :=
-                                      2#1_00000_00000_00000# or
-                                      Shift_Left (R, 10) or
-                                      Shift_Left (G, 5) or
-                                      B;
+                                    R := Shift_Left
+                                      ((M * R + Gr5) and 16#1F80#,
+                                       10 - 7);
+                                    G := Shift_Right
+                                      ((M * G + Gr5) and 16#1F80#,
+                                       7 - 5);
+                                    B := Shift_Right
+                                      ((M * B + Gr5),
+                                       7);
+                                    Mist_Color :=
+                                      2#1_00000_00000_00000# or R or G or B;
                                  end;
                               end if;
-                           end loop;
-                        end;
 
-                     else
-                        for Row in 0 .. S.Height - 1 loop
-                           Y := (Row + S.dY) * Textures.Texture_Size / S.Scale;
-
-                           if Y /= Prev_Y then
-                              if Row > 0 then
-                                 Cache.Column
-                                   (Prev_Row .. Row - 1) :=
-                                   (others => Color);
-                              end if;
-
-                              Color := Texture (Y);
-                              if Color /= 0 then
-                                 Transparent := False;
-                              end if;
-                              Prev_Y := Y;
-                              Prev_Row := Row;
+                              Cache.Column (Row - First) := Mist_Color;
+                              Color := New_Color;
                            end if;
                         end loop;
 
-                        if Color /= 0 then
-                           Cache.Column (Prev_Row .. S.Height - 1) :=
-                             (others => Color);
-                        end if;
+                     else
+                        declare
+                           Y0      : constant Natural :=
+                                       (if S.dY = 0 then 0
+                                        else S.dY * Textures.Texture_Size / S.Scale);
+                           Y1      : constant Natural :=
+                                       (if S.dY = 0 then Textures.Texture_Size - 1
+                                        else Textures.Texture_Size - Y0 - 1);
+                           Row     : Natural;
+                           R_Next  : Natural := 0;
+                           Top     : constant Integer := -S.dY;
+
+                        begin
+                           for Y in Y0 .. Y1 loop
+                              Row   := R_Next;
+                              Color := Texture (Y);
+
+                              if Y = Y1 then
+                                 R_Next := S.Height;
+                              else
+                                 R_Next := Top +
+                                   ((Y + 1) * S.Scale) / Textures.Texture_Size;
+                              end if;
+
+                              if R_Next > Row and then Color /= 0 then
+                                 if First < 0 then
+                                    First := Row;
+                                 end if;
+
+                                 Last := R_Next - 1;
+
+                                 --  When texture needs expansion, it's too
+                                 --  close to be subject to fog, so we can
+                                 --  take the texture's color directly.
+                                 Cache.Column (Row - First .. R_Next - First - 1) :=
+                                   (others => Color);
+                              end if;
+                           end loop;
+                        end;
                      end if;
 
                      Cache.Tile_X := X;
                      Display.Flush_Cache (Cache.Col_Buffer);
                   end if;
 
-                  if not Transparent then
+                  if First >= 0 then
                      Tasks.Copy_Sprites_Buffer
                        (Cache, Buffer,
-                        C, S.Scr_Top, S.Height);
+                        C, Margin + First, Last - First + 1);
                   end if;
                end if;
             end loop;

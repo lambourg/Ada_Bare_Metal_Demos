@@ -36,9 +36,15 @@ project Wolf_Common extends "../common/common.gpr" is
         Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
       for Switches ("textures-woodada_dark.ads") use
         Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-barrel.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
       for Switches ("textures-column.ads") use
         Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
       for Switches ("textures-light.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-plant.ads") use
+        Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
+      for Switches ("textures-table.ads") use
         Compiler'Default_Switches ("Ada") & ("-gnatyM9999");
    end Compiler;
 

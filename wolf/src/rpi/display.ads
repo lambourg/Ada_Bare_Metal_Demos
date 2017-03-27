@@ -24,6 +24,7 @@
 with HAL.Bitmap;
 with HAL.Framebuffer;
 
+with RPi.Bitmap;
 with Rpi_Board;
 with RPi.Framebuffer;
 
@@ -36,8 +37,6 @@ package Display is
    --  When copying from the cached data to the string, we need this copy to
    --  be synchronous, so that the column can later on be duplicated safely if
    --  needed.
-
-   Supports_Copy_Blend  : constant Boolean := False;
 
    function Get_Color_Mode
      (Layer : Positive) return HAL.Framebuffer.FB_Color_Mode
@@ -54,6 +53,9 @@ package Display is
      with Inline_Always;
 
    procedure Flush_Cache (Buffer : HAL.Bitmap.Bitmap_Buffer'Class);
+
+--     procedure Wait_Transfer is null;
+   procedure Wait_Transfer renames RPi.Bitmap.Wait_Transfer;
 
 private
 

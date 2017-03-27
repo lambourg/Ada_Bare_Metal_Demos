@@ -30,7 +30,7 @@ package Raycaster is
    subtype LCD_Column is Natural range 0 .. LCD_W - 1;
 
    Height_Multiplier : constant Float :=
-                         Float (LCD_H) / 1.5;
+                         Float (LCD_H) / 2.0;
 
    --  1 pixel = 1/10 degree
    FOV_Vect          : array (0 .. LCD_W - 1) of Degree;

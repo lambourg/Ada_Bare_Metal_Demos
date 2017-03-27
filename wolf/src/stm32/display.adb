@@ -22,6 +22,7 @@
 ------------------------------------------------------------------------------
 
 with Cortex_M.Cache;
+with STM32.DMA2D;
 
 package body Display is
 
@@ -68,5 +69,15 @@ package body Display is
    begin
       Cortex_M.Cache.Clean_DCache (Buffer.Addr, Buffer.Buffer_Size);
    end Flush_Cache;
+
+   -------------------
+   -- Wait_Transfer --
+   -------------------
+
+   procedure Wait_Transfer
+   is
+   begin
+      STM32.DMA2D.DMA2D_Wait_Transfer;
+   end Wait_Transfer;
 
 end Display;
