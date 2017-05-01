@@ -1,0 +1,15 @@
+abstract project Common_STM32 is
+
+   type RTS_Type is ("ravenscar-sfp", "ravenscar-full");
+   RTS : RTS_Type := External ("RTS_Profile", "ravenscar-sfp");
+
+   Sources := ();
+
+   case RTS is
+      when "ravenscar-sfp" =>
+         Sources := (Project'Project_Dir & "lch_stm32_sfp");
+      when "ravenscar-full" =>
+         Sources := (Project'Project_Dir & "lch_stm32_full");
+   end case;
+
+end Common_STM32;

@@ -22,8 +22,10 @@
 ------------------------------------------------------------------------------
 
 with Ada.Unchecked_Conversion;
-with Filesystem.FAT.Directories;
 
+with HAL; use HAL;
+
+with Filesystem.FAT.Directories;
 with Filesystem.FAT.Files;
 
 package body Filesystem.FAT is
@@ -381,8 +383,6 @@ package body Filesystem.FAT is
      (FS     : not null access FAT_Filesystem;
       Status : out Status_Code)
    is
-      use type HAL.Byte_Array;
-
       subtype Disk_Parameter_Block is Block (0 .. 91);
       function To_Disk_Parameter is new Ada.Unchecked_Conversion
         (Disk_Parameter_Block, FAT_Disk_Parameter);
@@ -509,7 +509,7 @@ package body Filesystem.FAT is
       end if;
 
       if not FS.Controller.Read
-        (Unsigned_64 (FS.LBA) + Unsigned_64 (Block), FS.Window)
+        (UInt64 (FS.LBA) + UInt64 (Block), FS.Window)
       then
          FS.Window_Block  := 16#FFFF_FFFF#;
 
@@ -760,7 +760,7 @@ package body Filesystem.FAT is
       Addr   : System.Address;
       Length : in out File_Size) return Status_Code
    is
-      L : FAT_File_Size := FAT_File_Size (Length);
+      L   : FAT_File_Size := FAT_File_Size (Length);
       Ret : Status_Code;
    begin
       Ret := Files.Read (File, Addr, L);
@@ -880,8 +880,8 @@ package body Filesystem.FAT is
          FS.FAT_Block := Block_Num;
 
          if not FS.Controller.Read
-           (Unsigned_64 (FS.LBA) + Unsigned_64 (FS.FAT_Block),
-            FS.FAT_Window)
+           (Block_Number => UInt64 (FS.LBA) + UInt64 (FS.FAT_Block),
+            Data         => FS.FAT_Window)
          then
             FS.FAT_Block := 16#FFFF_FFFF#;
             return INVALID_CLUSTER;
@@ -889,12 +889,12 @@ package body Filesystem.FAT is
       end if;
 
       if FS.Version = FAT32 then
-         Idx :=
-           Natural (FAT_File_Size ((Cluster) * 4) mod FS.Block_Size);
+         Idx := Natural (FAT_File_Size ((Cluster) * 4) mod FS.Block_Size);
+
          return To_Cluster (FS.FAT_Window (Idx .. Idx + 3)) and 16#0FFF_FFFF#;
       else
-         Idx :=
-           Natural (FAT_File_Size ((Cluster) * 2) mod FS.Block_Size);
+         Idx := Natural (FAT_File_Size ((Cluster) * 2) mod FS.Block_Size);
+
          return Cluster_Type (To_U16 (FS.FAT_Window (Idx .. Idx + 1)));
       end if;
 
@@ -930,7 +930,7 @@ package body Filesystem.FAT is
          FS.FAT_Block := Block_Num;
 
          if not FS.Controller.Read
-           (Unsigned_64 (FS.LBA) + Unsigned_64 (FS.FAT_Block),
+           (UInt64 (FS.LBA) + UInt64 (FS.FAT_Block),
             FS.FAT_Window)
          then
             FS.FAT_Block := 16#FFFF_FFFF#;
@@ -943,7 +943,7 @@ package body Filesystem.FAT is
       FS.FAT_Window (Idx .. Idx + 3) := From_Cluster (Value);
 
       if not FS.Controller.Write
-        (Unsigned_64 (FS.LBA) + Unsigned_64 (FS.FAT_Block),
+        (UInt64 (FS.LBA) + UInt64 (FS.FAT_Block),
          FS.FAT_Window)
       then
          return Disk_Error;
@@ -959,7 +959,6 @@ package body Filesystem.FAT is
    procedure Write_FSInfo
      (FS : in out FAT_Filesystem)
    is
-      use type HAL.Byte_Array;
       subtype FSInfo_Block is Block (0 .. 11);
       function From_FSInfo is new Ada.Unchecked_Conversion
         (FAT_FS_Info, FSInfo_Block);
@@ -1094,7 +1093,7 @@ package body Filesystem.FAT is
    is
    begin
       if FS.Controller.Write
-        (Unsigned_64 (FS.LBA) + Unsigned_64 (FS.Window_Block),
+        (UInt64 (FS.LBA) + UInt64 (FS.Window_Block),
          FS.Window)
       then
          return OK;

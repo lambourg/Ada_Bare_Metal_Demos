@@ -21,6 +21,7 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
+--  with Ada.Exceptions;
 with Ada.Text_IO;           use Ada.Text_IO;
 
 with RPi.Framebuffer;       use RPi.Framebuffer;
@@ -49,7 +50,11 @@ begin
    Put_Line ("Now starting ...");
 
    Playground.Play;
-exception
-   when others =>
-      Ada.Text_IO.Put_Line ("Exception caught in main");
+
+--  exception
+--     when E : others =>
+--        Ada.Text_IO.Put_Line (Ada.Exceptions.Exception_Information (E));
+--        loop
+--           null;
+--        end loop;
 end Wolf_Demo;

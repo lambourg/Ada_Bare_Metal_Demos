@@ -21,9 +21,9 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Bitmap;
-with HAL.Bitmap;
 with HAL.Framebuffer;
+
+with Bitmap;
 
 with STM32.Board; use STM32.Board;
 
@@ -41,7 +41,7 @@ package Display is
               then LCD_Natural_Height
               else LCD_Natural_Width);
 
-   Use_Copy_Rect_Always : constant Boolean := True;
+   Use_Column_Cache : constant Boolean := True;
    --  Accelerated Copy_Rect available with the DMA2D
 
    function Get_Color_Mode
@@ -55,12 +55,13 @@ package Display is
      (Layer : Positive) return Bitmap.Bitmap_Buffer'Class
      with Inline_Always;
 
-   procedure Update_Layer (Layer : Positive)
+   procedure Update_Layer
+     (Layer : Positive)
      with Inline_Always;
 
    procedure Update_Layers with Inline_Always;
 
-   procedure Flush_Cache (Buffer : HAL.Bitmap.Bitmap_Buffer'Class);
+   procedure Flush_Cache (Buffer : Bitmap.Bitmap_Buffer'Class);
 
    procedure Wait_Transfer with Inline_Always;
 
@@ -68,9 +69,9 @@ private
 
    function Get_Color_Mode
      (Layer : Positive) return HAL.Framebuffer.FB_Color_Mode
-   is (STM32.Board.Display.Get_Color_Mode (Layer));
+   is (STM32.Board.Display.Color_Mode (Layer));
 
    function Is_Swapped return Boolean
-   is (STM32.Board.Display.Is_Swapped);
+   is (STM32.Board.Display.Swapped);
 
 end Display;

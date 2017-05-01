@@ -1,0 +1,30 @@
+aggregate project RaspberryPi_Demos is
+
+   type Board_Type is
+     ("rpi2",
+      "rpi3"};
+   Board : Board_Type := external ("Board", "rpi2");
+
+   type RTS_Profile_Type is ("ravenscar-sfp", "ravenscar-full");
+   RTS_Profile : RTS_Profile_Type := external ("RTS_Profile", "ravenscar-sfp");
+
+   type BUILD_TYPE is ("Debug", "Production");
+   Build : BUILD_Type := external ("PLATFORM_BUILD", "Debug");
+
+   case Board is
+      when "rpi2" =>
+         for Target use "arm-eabi";
+      when "rpi3" =>
+         for Target use "aarch64-elf";
+   end case;
+
+   for Runtime ("Ada") use RTS_Profile & "-" & Board;
+
+   for External ("RTS_Profile") use RTS_Profile;
+   for External ("PLATFORM_BUILD") use Build;
+
+   for Project_Files use
+     ("wolf/wolf_" & Board & ".gpr",
+      "rpi2-mmc/sdcard_" & Board & ".gpr");
+
+end RaspberryPi_Demos;

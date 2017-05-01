@@ -37,7 +37,6 @@ with STM32.SDRAM;           use STM32.SDRAM;
 with HAL.Bitmap;            use HAL.Bitmap;
 with HAL.Framebuffer;
 
-with Bitmapped_Drawing;     use Bitmapped_Drawing;
 with Framebuffer_Helper;    use Framebuffer_Helper;
 
 with Gestures;
@@ -114,8 +113,8 @@ begin
    Game.Init;
    Game.Start;
 
-   Game.Draw (Display.Get_Hidden_Buffer (1));
-   Status.Init_Area (Display.Get_Hidden_Buffer (1));
+   Game.Draw (Display.Hidden_Buffer (1).all);
+   Status.Init_Area (Display.Hidden_Buffer (1).all);
 
    Status.Set_Score (0);
 
@@ -129,14 +128,14 @@ begin
 
    Solver.Init_Solver;
 
-   STM32.Board.Turn_Off (STM32.Board.Green);
+   STM32.Board.Turn_Off (STM32.Board.Green_LED);
 
    loop
       if Game.Is_Sliding then
          while Game.Is_Sliding loop
-            if not Game.Slide (Display.Get_Hidden_Buffer (1)) then
+            if not Game.Slide (Display.Hidden_Buffer (1).all) then
                Game.Add_Value;
-               Game.Draw (Display.Get_Hidden_Buffer (1));
+               Game.Draw (Display.Hidden_Buffer (1).all);
 
                Status.Set_Score (Game.Grid.Score);
                Update_All_Layers;
@@ -155,9 +154,9 @@ begin
          Display.Update_Layer (2, True);
 
          if Solver.Solver_Enabled then
-            Turn_On (STM32.Board.Green);
+            Turn_On (STM32.Board.Green_LED);
          else
-            Turn_Off (STM32.Board.Green);
+            Turn_Off (STM32.Board.Green_LED);
          end if;
 
          Do_Toggle_Solver := False;

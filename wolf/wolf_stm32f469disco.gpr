@@ -1,9 +1,14 @@
-with "../drivers/boards/stm32f469disco.gpr";
+with "../drivers/boards/stm32f469_discovery.gpr";
+with "../common/common_stm32";
 
 project Wolf_STM32F469Disco extends "wolf_common.gpr" is
 
-   for Runtime ("Ada") use STM32F469Disco'Runtime("Ada");
-   for Source_Dirs use Project'Source_Dirs & ("src/stm32");
+   for Target use STM32F469_Discovery'Target;
+   for Runtime ("Ada") use STM32F469_Discovery'Runtime("Ada");
+   for Source_Dirs use
+     Project'Source_Dirs &
+     ("src/stm32") &
+     Common_Stm32.Sources;
    for Object_Dir use "obj/stm32f469disco";
 
    for Main use ("wolf_demo.adb");

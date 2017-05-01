@@ -21,12 +21,11 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Bitmapped_Drawing;    use Bitmapped_Drawing;
 with HAL.Bitmap;           use HAL.Bitmap;
 
 package Status is
 
-   procedure Init_Area (Buffer : HAL.Bitmap.Bitmap_Buffer'Class);
+   procedure Init_Area (Buffer : in out HAL.Bitmap.Bitmap_Buffer'Class);
 
    procedure Progress (Pct : Float);
    procedure Clear_Progress;

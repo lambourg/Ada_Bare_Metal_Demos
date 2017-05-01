@@ -468,7 +468,8 @@ private
    overriding function Read
      (File   : access FAT_File_Handle;
       Addr   : System.Address;
-      Length : in out File_Size) return Status_Code;
+      Length : in out File_Size) return Status_Code
+     with Pre => Length <= File_Size (FAT_File_Size'Last);
    --  read data from file.
    --  @return number of bytes read (at most Data'Length), or -1 on error.
 

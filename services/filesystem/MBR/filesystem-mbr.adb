@@ -34,7 +34,8 @@ package body Filesystem.MBR is
       MBR         : out Master_Boot_Record) return Status_Code
    is
       Tmp  : aliased Master_Boot_Record;
-      Data : aliased HAL.Byte_Array (1 .. 512) with Address => Tmp'Address;
+      Data : aliased HAL.Block_Drivers.Block (1 .. 512)
+        with Address => Tmp'Address;
    begin
       --  Let's read the MBR: located in the first block
       if not Controller.Read (0, Data) then
@@ -60,12 +61,13 @@ package body Filesystem.MBR is
       P           : Partition_Number;
       EBR         : out Extended_Boot_Record) return Status_Code
    is
-      BA : constant Block_Number := LBA (MBR, P);
+      BA   : constant Block_Number := LBA (MBR, P);
       Tmp  : aliased Extended_Boot_Record;
-      Data : aliased HAL.Byte_Array (1 .. 512) with Address => Tmp'Address;
+      Data : aliased HAL.Block_Drivers.Block (1 .. 512)
+        with Address => Tmp'Address;
    begin
       --  Let's read the MBR: located in the first block
-      if not Controller.Read (BA, Data) then
+      if not Controller.Read (HAL.UInt64 (BA), Data) then
          return Disk_Error;
       end if;
 
@@ -172,10 +174,11 @@ package body Filesystem.MBR is
    is
       BA   : constant Block_Number := Block_Number (EBR.P_Entries (2).LBA);
       Tmp  : aliased Extended_Boot_Record;
-      Data : aliased HAL.Byte_Array (1 .. 512) with Address => Tmp'Address;
+      Data : aliased HAL.Block_Drivers.Block (1 .. 512)
+        with Address => Tmp'Address;
    begin
       --  Let's read the MBR: located in the first block
-      if not Controller.Read (BA, Data) then
+      if not Controller.Read (HAL.UInt64 (BA), Data) then
          return Disk_Error;
       end if;
 

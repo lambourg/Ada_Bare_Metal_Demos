@@ -30,35 +30,7 @@ with STM32.DMA2D_Bitmap;
 
 package Bitmap is
 
-   type Bitmap_Buffer is new STM32.DMA2D_Bitmap.DMA2D_Bitmap_Buffer
-   with null record;
-
-   overriding procedure Fill
-     (Buffer : Bitmap_Buffer;
-      Color  : UInt32);
-
-   overriding procedure Fill_Rect
-     (Buffer : Bitmap_Buffer;
-      Color  : UInt32;
-      X      : Integer;
-      Y      : Integer;
-      Width  : Integer;
-      Height : Integer);
-
-   overriding procedure Copy_Rect
-     (Src_Buffer  : HAL.Bitmap.Bitmap_Buffer'Class;
-      X_Src       : Natural;
-      Y_Src       : Natural;
-      Dst_Buffer  : Bitmap_Buffer;
-      X_Dst       : Natural;
-      Y_Dst       : Natural;
-      Bg_Buffer   : HAL.Bitmap.Bitmap_Buffer'Class;
-      X_Bg        : Natural;
-      Y_Bg        : Natural;
-      Width       : Natural;
-      Height      : Natural;
-      Synchronous : Boolean;
-      Clean_Cache : Boolean := True);
+   subtype Bitmap_Buffer is STM32.DMA2D_Bitmap.DMA2D_Bitmap_Buffer;
 
    Null_Buffer : constant Bitmap_Buffer :=
                    (Addr       => System.Null_Address,

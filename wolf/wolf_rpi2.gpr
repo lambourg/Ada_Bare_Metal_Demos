@@ -10,4 +10,14 @@ project Wolf_RPi2 extends "wolf_common.gpr" is
 
    for Main use ("wolf_demo.adb");
 
+   package Builder is
+      for Switches ("Ada") use ("-s");
+   end Builder;
+
+   package Linker is
+      for Default_Switches ("Ada") use
+        Linker'Default_Switches ("Ada") &
+        ("-Wl,--defsym=__stack_size=32768");
+   end Linker;
+
 end Wolf_RPi2;

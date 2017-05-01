@@ -55,8 +55,7 @@ package body Tasks is
    protected Draw_Prot
    is
       procedure Set_Done (Id : CPU);
-      entry Wait
-      with Max_Queue_Length => 1;
+      entry Wait with Max_Queue_Length => 1;
 
    private
       Done1 : Boolean := False;
@@ -89,6 +88,13 @@ package body Tasks is
                                     when 3 => 3 * LCD_W / 4 - 1,
                                     when 4 => LCD_W - 1);
    begin
+      Tmp.Col_Buffer :=
+        (Addr       => Tmp.Column'Address,
+         Width      => 1,
+         Height     => LCD_H,
+         Color_Mode => Playground.Color_Mode,
+         Swapped    => False);
+
       loop
          Tmp.Prev_Height := LCD_H;
          Tmp.Prev_Top    := 0;
@@ -96,7 +102,7 @@ package body Tasks is
          Suspend_Until_True (Starts (Id));
 
          declare
-            Buf : constant HAL.Bitmap.Bitmap_Buffer'Class :=
+            Buf : Bitmap.Bitmap_Buffer :=
                     Display.Get_Hidden_Buffer (1);
          begin
             for X in X0 .. X1 loop
@@ -166,7 +172,7 @@ package body Tasks is
 
    procedure Copy_Sprites_Buffer
      (Cache  : Column_Info;
-      Buf    : HAL.Bitmap.Bitmap_Buffer'Class;
+      Buf    : in out HAL.Bitmap.Bitmap_Buffer'Class;
       X      : Natural;
       Y      : Natural;
       Height : Natural)
@@ -190,7 +196,7 @@ package body Tasks is
       for Row in 0 .. Height - 1 loop
          Col := Cache.Column (Row);
          if Col /= 0 then
-            Buf.Set_Pixel (X, Y + Row, Unsigned_32 (To_RGB (Col)));
+            Buf.Set_Pixel ((X, Y + Row), UInt32 (To_RGB (Col)));
          end if;
       end loop;
    end Copy_Sprites_Buffer;
@@ -202,7 +208,7 @@ package body Tasks is
    procedure Draw
    is
       Visible : Visible_Elements := (others => (others => False));
-      Buf     : constant Bitmap_Buffer'Class :=
+      Buf     : Bitmap.Bitmap_Buffer :=
                   Display.Get_Hidden_Buffer (1);
    begin
       --  Trace the rays in the env task
@@ -218,7 +224,7 @@ package body Tasks is
       --  Wait for the tasks to finish
       Draw_Prot.Wait;
 
-      Buf.Wait_Transfer;
+      Display.Wait_Transfer;
       Draw_Sprites (Buf, Tracers);
 
       FPS := FPS + 1;

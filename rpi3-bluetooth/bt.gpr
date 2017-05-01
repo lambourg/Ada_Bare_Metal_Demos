@@ -1,0 +1,31 @@
+with "../drivers/boards/rpi3";
+
+project BT is
+
+   for Target use RPi3'Target;
+   for Runtime ("Ada") use RPi3'Runtime ("Ada");
+
+   for Languages use ("Ada");
+
+   for Source_Dirs use ("src");
+   for Object_Dir use "obj/rpi3";
+   for Exec_Dir use ".";
+
+   for Main use ("bt.adb");
+
+   package Builder is
+      for Executable ("wolf_demo.adb") use "wolf_demo_rpi3";
+   end Builder;
+
+   package Compiler is
+      for Switches ("Ada") use ("-O3", "-gnatyg-s", "-gnatwa.X");
+   end Compiler;
+
+   package Linker is
+      for Default_Switches ("Ada") use
+        ("-Wl,--defsym=__stack_size=32768",
+         "-Wl,--gc-sections",
+         "-Wl,--print-memory-usage");
+   end Linker;
+
+end BT;

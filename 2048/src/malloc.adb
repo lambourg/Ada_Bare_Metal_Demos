@@ -49,7 +49,7 @@ package body Malloc is
    -- Start_Fast_Malloc --
    -----------------------
 
-   procedure Start_Fast_Malloc (Byte_Size : Unsigned_32) is
+   procedure Start_Fast_Malloc (Byte_Size : UInt32) is
    begin
       if not G_Fast_Mode then
          G_Prealloc_Size := Storage_Offset (Byte_Size);
@@ -94,7 +94,7 @@ package body Malloc is
 
          return Ret;
       else
-         return STM32.SDRAM.Reserve (Unsigned_32 (Size));
+         return STM32.SDRAM.Reserve (UInt32 (Size));
       end if;
    end Alloc;
 
@@ -122,12 +122,12 @@ package body Malloc is
    -- Allocated --
    ---------------
 
-   function Allocated return Unsigned_32
+   function Allocated return UInt32
    is
    begin
       if G_Fast_Mode then
-         return Unsigned_32 (G_Prealloc_Size) +
-           Unsigned_32 (G_Current - G_Preallocated);
+         return UInt32 (G_Prealloc_Size) +
+           UInt32 (G_Current - G_Preallocated);
       else
          return 0;
       end if;

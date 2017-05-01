@@ -1,4 +1,4 @@
-with "../drivers/hal/config";
+with "../drivers/boards/config";
 
 project Common is
 
@@ -11,13 +11,10 @@ project Common is
    for Source_Dirs use ("gui");
 
    package Compiler renames Config.Compiler;
-   package Builder renames Config.Builder;
 
    package Linker is
       for Default_Switches ("Ada") use
-        ("-Wl,--defsym=__stack_size=32768", 
-         "-Wl,--gc-sections",
-         "-Wl,--print-memory-usage");
+        ("-Wl,--gc-sections");
    end Linker;
 
    package Ide is

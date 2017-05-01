@@ -147,6 +147,7 @@ package body Filesystem.FAT.Directories is
      (Parent : FAT_Node;
       Value  : in out FAT_Node) return Status_Code
    is
+      use HAL;
       subtype Entry_Block is Block (1 .. 32);
       function To_Block is new
         Ada.Unchecked_Conversion (FAT_Directory_Entry, Entry_Block);
@@ -227,6 +228,7 @@ package body Filesystem.FAT.Directories is
       Current_Index   : in out Entry_Index;
       DEntry          : out    FAT_Directory_Entry) return Status_Code
    is
+      use HAL;
       subtype Entry_Data is Block (1 .. 32);
       function To_Entry is new Ada.Unchecked_Conversion
         (Entry_Data, FAT_Directory_Entry);

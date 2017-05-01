@@ -28,10 +28,12 @@
 --  Adapted to Ada and restricted targets, but the core of the algo and the
 --  constants are directly taken from there.
 
-with Interfaces;                        use Interfaces;
 with Ada.Containers.Hashed_Maps;
 with Ada.Unchecked_Conversion;
 with Ada.Numerics.Elementary_Functions; use Ada.Numerics.Elementary_Functions;
+
+with HAL; use HAL;
+
 with Malloc;
 with Game;
 with Grid;
@@ -47,8 +49,8 @@ package body Solver is
    type Board_T is array (1 .. 4) of Row_T with Pack, Size => 64;
 
    type Board_32 is record
-      Row_12 : Unsigned_32;
-      Row_34 : Unsigned_32;
+      Row_12 : UInt32;
+      Row_34 : UInt32;
    end record with Size => 64;
 
    for Board_32 use record
@@ -59,13 +61,13 @@ package body Solver is
    function Hash (Board : Board_T) return Ada.Containers.Hash_Type;
 
    function To_UInt16 is new Ada.Unchecked_Conversion
-     (Row_T, Unsigned_16);
+     (Row_T, UInt16);
    function To_Row is new Ada.Unchecked_Conversion
-     (Unsigned_16, Row_T);
+     (UInt16, Row_T);
    function To_UInt64 is new Ada.Unchecked_Conversion
-     (Board_T, Unsigned_64);
+     (Board_T, UInt64);
    function To_Board is new Ada.Unchecked_Conversion
-     (Unsigned_64, Board_T);
+     (UInt64, Board_T);
    function To_Board32 is new Ada.Unchecked_Conversion
      (Board_T, Board_32);
    function To_Board is new Ada.Unchecked_Conversion
@@ -77,10 +79,10 @@ package body Solver is
    -- GLOBAL TABLES --
    -------------------
 
-   type Score_Table is array (Unsigned_16) of Float with Pack;
+   type Score_Table is array (UInt16) of Float with Pack;
 
-   type Row_Translation_Table is array (Unsigned_16) of Unsigned_16 with Pack;
-   type Col_Translation_Table is array (Unsigned_16) of Unsigned_64 with Pack;
+   type Row_Translation_Table is array (UInt16) of UInt16 with Pack;
+   type Col_Translation_Table is array (UInt16) of UInt64 with Pack;
 
    Row_Left_Table   : access Row_Translation_Table;
    Row_Right_Table  : access Row_Translation_Table;
@@ -133,7 +135,7 @@ package body Solver is
       Max_Depth    : Natural := 0;
       Cur_Depth    : Natural := 0;
       Cache_Hits   : Natural := 0;
-      Moves_Evaled : Unsigned_64 := 0;
+      Moves_Evaled : UInt64 := 0;
       Depth_Limit  : Natural := 0;
    end record;
 
@@ -171,7 +173,7 @@ package body Solver is
    function Hash (Board : Board_T) return Ada.Containers.Hash_Type
    is
       use Ada.Containers;
-      UInt : constant Unsigned_64 := To_UInt64 (Board);
+      UInt : constant UInt64 := To_UInt64 (Board);
    begin
       return Hash_Type (Shift_Right (UInt, 32)) xor
         Hash_Type (UInt and 16#FFFF_FFFF#);
@@ -185,10 +187,10 @@ package body Solver is
    is
    begin
       return To_Row
-        (Shift_Left (Unsigned_16 (Row (1)), 12) or
-         Shift_Left (Unsigned_16 (Row (2)), 8) or
-         Shift_Left (Unsigned_16 (Row (3)), 4) or
-         Unsigned_16 (Row (4)));
+        (Shift_Left (UInt16 (Row (1)), 12) or
+         Shift_Left (UInt16 (Row (2)), 8) or
+         Shift_Left (UInt16 (Row (3)), 4) or
+         UInt16 (Row (4)));
    end Reverse_Row;
 
    ---------------
@@ -239,7 +241,7 @@ package body Solver is
 
    function Count_Empty (Board : Board_T) return Natural
    is
-      Dw : Unsigned_64 := To_UInt64 (Board);
+      Dw : UInt64 := To_UInt64 (Board);
    begin
       Dw := Dw or (Shift_Right (Dw, 2) and 16#3333_3333_3333_3333#);
       Dw := Dw or Shift_Right (Dw, 1);
@@ -262,12 +264,12 @@ package body Solver is
 
    function Count_Distinct_Tiles (Board : Board_T) return Natural
    is
-      Bitset : Unsigned_16 := 0;
+      Bitset : UInt16 := 0;
       Count  : Natural := 0;
    begin
       for Row of Board loop
          for Cell of Row loop
-            Bitset := Bitset or Shift_Left (Unsigned_16'(1), Natural (Cell));
+            Bitset := Bitset or Shift_Left (UInt16'(1), Natural (Cell));
          end loop;
       end loop;
 
@@ -287,12 +289,12 @@ package body Solver is
 
    procedure Init_Solver
    is
-      function Unpack_Col (Row : Unsigned_16) return Unsigned_64 is
+      function Unpack_Col (Row : UInt16) return UInt64 is
         (16#000F_000F_000F_000F# and
-           (Unsigned_64 (Row)
-            or Shift_Left (Unsigned_64 (Row), 12)
-            or Shift_Left (Unsigned_64 (Row), 24)
-            or Shift_Left (Unsigned_64 (Row), 36)));
+           (UInt64 (Row)
+            or Shift_Left (UInt64 (Row), 12)
+            or Shift_Left (UInt64 (Row), 24)
+            or Shift_Left (UInt64 (Row), 36)));
    begin
       Row_Left_Table   := new Row_Translation_Table;
       Row_Right_Table  := new Row_Translation_Table;
@@ -302,12 +304,12 @@ package body Solver is
 
       --  Precalculation of various results for every variations of a given
       --  row or column
-      for Row in Unsigned_16'Range loop
-         Status.Progress (Float (Row) / Float (Unsigned_16'Last));
+      for Row in UInt16'Range loop
+         Status.Progress (Float (Row) / Float (UInt16'Last));
 
          declare
             Line               : Row_T := To_Row (Row);
-            Rev_Row            : constant Unsigned_16 :=
+            Rev_Row            : constant UInt16 :=
                                    To_UInt16 (Reverse_Row (Line));
             Rank               : Cell_T;
             Sum                : Float;
@@ -317,8 +319,8 @@ package body Solver is
             Counter            : Natural;
             Monotonicity_Left  : Float;
             Monotonicity_Right : Float;
-            Result             : Unsigned_16;
-            Rev_Result         : Unsigned_16;
+            Result             : UInt16;
+            Rev_Result         : UInt16;
 
          begin
             --  Heuristic score
@@ -441,7 +443,7 @@ package body Solver is
    function Move_Down (Board : Board_T) return Board_T
    is
       T   : constant Board_T := Transpose (Board);
-      Ret : Unsigned_64 := To_UInt64 (Board);
+      Ret : UInt64 := To_UInt64 (Board);
    begin
       Ret := Col_Down_Table (To_UInt16 (T (1)))
         or Shift_Left (Col_Down_Table (To_UInt16 (T (2))), 4)
@@ -460,10 +462,10 @@ package body Solver is
       Ret : Board_32;
    begin
       Ret :=
-        (Row_12 => Unsigned_32 (Row_Left_Table (To_UInt16 (Board (1))))
-           or Shift_Left (Unsigned_32 (Row_Left_Table (To_UInt16 (Board (2)))), 16),
-         Row_34 => Unsigned_32 (Row_Left_Table (To_UInt16 (Board (3))))
-           or Shift_Left (Unsigned_32 (Row_Left_Table (To_UInt16 (Board (4)))), 16));
+        (Row_12 => UInt32 (Row_Left_Table (To_UInt16 (Board (1))))
+           or Shift_Left (UInt32 (Row_Left_Table (To_UInt16 (Board (2)))), 16),
+         Row_34 => UInt32 (Row_Left_Table (To_UInt16 (Board (3))))
+           or Shift_Left (UInt32 (Row_Left_Table (To_UInt16 (Board (4)))), 16));
 
       return To_Board (Ret);
    end Move_Left;
@@ -477,10 +479,10 @@ package body Solver is
       Ret : Board_32;
    begin
       Ret :=
-        (Unsigned_32 (Row_Right_Table (To_UInt16 (Board (1))))
-         or Shift_Left (Unsigned_32 (Row_Right_Table (To_UInt16 (Board (2)))), 16),
-         Unsigned_32 (Row_Right_Table (To_UInt16 (Board (3))))
-         or Shift_Left (Unsigned_32 (Row_Right_Table (To_UInt16 (Board (4)))), 16));
+        (UInt32 (Row_Right_Table (To_UInt16 (Board (1))))
+         or Shift_Left (UInt32 (Row_Right_Table (To_UInt16 (Board (2)))), 16),
+         UInt32 (Row_Right_Table (To_UInt16 (Board (3))))
+         or Shift_Left (UInt32 (Row_Right_Table (To_UInt16 (Board (4)))), 16));
 
       return To_Board (Ret);
    end Move_Right;
@@ -679,7 +681,8 @@ package body Solver is
            Standard'Maximum_Alignment);
 
       State.Depth_Limit :=
-        Integer'Max (2, Count_Distinct_Tiles (Board) / 2 - 1);
+        Integer'Max (2, 2 * Count_Distinct_Tiles (Board) / 3 - 2);
+--          Integer'Max (2, Count_Distinct_Tiles (Board) / 2 - 1);
 
       G_Progress := (others => 0);
 

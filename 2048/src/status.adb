@@ -24,6 +24,7 @@
 with Game;
 
 with STM32.Board;          use STM32.Board;
+with Bitmapped_Drawing;    use Bitmapped_Drawing;
 
 package body Status is
 
@@ -53,7 +54,7 @@ package body Status is
    G_High_Score : Integer := -1;
 
    procedure Draw_Button
-     (Buffer  : Bitmap_Buffer'Class;
+     (Buffer  : in out Bitmap_Buffer'Class;
       Area    : Rect;
       Label   : String;
       State   : Boolean;
@@ -63,7 +64,7 @@ package body Status is
    -- Init_Area --
    ---------------
 
-   procedure Init_Area (Buffer : HAL.Bitmap.Bitmap_Buffer'Class)
+   procedure Init_Area (Buffer : in out HAL.Bitmap.Bitmap_Buffer'Class)
    is
       Small_Progress_Bar : Boolean := False;
 
@@ -153,27 +154,26 @@ package body Status is
       --  so that we don't have to redraw it
       if not Small_Progress_Bar then
          Buffer.Fill_Rect
-           (Color  => FG,
-            X      => G_Area.Position.X + Prog_Area.Position.X - 2,
-            Y      => G_Area.Position.Y + Prog_Area.Position.Y - 2,
-            Width  => Prog_Area.Width + 4,
-            Height => Prog_Area.Height + 4);
+           (Color => FG,
+            Area  => ((X      => G_Area.Position.X + Prog_Area.Position.X - 2,
+                       Y      => G_Area.Position.Y + Prog_Area.Position.Y - 2),
+                      Width  => Prog_Area.Width + 4,
+                      Height => Prog_Area.Height + 4));
          Buffer.Fill_Rect
-           (Color  => Transparent,
-            X      => G_Area.Position.X + Prog_Area.Position.X - 1,
-            Y      => G_Area.Position.Y + Prog_Area.Position.Y - 1,
-            Width  => Prog_Area.Width + 2,
-            Height => Prog_Area.Height + 2);
+           (Color => Transparent,
+            Area  => ((X      => G_Area.Position.X + Prog_Area.Position.X - 1,
+                       Y      => G_Area.Position.Y + Prog_Area.Position.Y - 1),
+                      Width  => Prog_Area.Width + 2,
+                      Height => Prog_Area.Height + 2));
       end if;
 
       --  Setup the Score area
-      Fill_Rounded_Rectangle
-        (Buffer,
-         Hue    => Box_BG,
-         X      => G_Area.Position.X + Score_Area.Position.X,
-         Y      => G_Area.Position.Y + Score_Area.Position.Y,
-         Width  => Score_Area.Width,
-         Height => Score_Area.Height,
+      Buffer.Fill_Rounded_Rect
+        (Color  => Box_BG,
+         Area   => ((X      => G_Area.Position.X + Score_Area.Position.X,
+                     Y      => G_Area.Position.Y + Score_Area.Position.Y),
+                    Width  => Score_Area.Width,
+                    Height => Score_Area.Height),
          Radius => Margin);
       Draw_String
         (Buffer,
@@ -188,13 +188,12 @@ package body Status is
          Fast       => False);
 
       --  Setup the High Score area
-      Fill_Rounded_Rectangle
-        (Buffer,
-         Hue    => Box_BG,
-         X      => G_Area.Position.X + High_Area.Position.X,
-         Y      => G_Area.Position.Y + High_Area.Position.Y,
-         Width  => High_Area.Width,
-         Height => High_Area.Height,
+      Buffer.Fill_Rounded_Rect
+        (Color  => Box_BG,
+         Area   => ((X      => G_Area.Position.X + High_Area.Position.X,
+                     Y      => G_Area.Position.Y + High_Area.Position.Y),
+                    Width  => High_Area.Width,
+                    Height => High_Area.Height),
          Radius => Margin);
       Draw_String
         (Buffer,
@@ -235,7 +234,7 @@ package body Status is
    -----------------
 
    procedure Draw_Button
-     (Buffer  : Bitmap_Buffer'Class;
+     (Buffer  : in out Bitmap_Buffer'Class;
       Area    : Rect;
       Label   : String;
       State   : Boolean;
@@ -270,61 +269,57 @@ package body Status is
       end if;
 
       if Rounded then
-         Fill_Rounded_Rectangle
-           (Buffer,
-            Hue    => Top,
-            X      => Area.Position.X,
-            Y      => Area.Position.Y,
-            Width  => Area.Width,
-            Height => Area.Height - Shadow,
+         Buffer.Fill_Rounded_Rect
+           (Color  => Top,
+            Area   => ((X      => Area.Position.X,
+                        Y      => Area.Position.Y),
+                       Width  => Area.Width,
+                       Height => Area.Height - Shadow),
             Radius => Margin);
-         Fill_Rounded_Rectangle
-           (Buffer,
-            Hue    => Bottom,
-            X      => Area.Position.X,
-            Y      => Area.Position.Y + Shadow,
-            Width  => Area.Width,
-            Height => Area.Height - Shadow,
+         Buffer.Fill_Rounded_Rect
+           (Color  => Bottom,
+            Area   => ((X      => Area.Position.X,
+                        Y      => Area.Position.Y + Shadow),
+                       Width  => Area.Width,
+                       Height => Area.Height - Shadow),
             Radius => Margin);
-         Fill_Rounded_Rectangle
-           (Buffer,
-            Hue    => BG,
-            X      => Area.Position.X,
-            Y      => Area.Position.Y + Shadow,
-            Width  => Area.Width,
-            Height => Area.Height - 2 * Shadow,
+         Buffer.Fill_Rounded_Rect
+           (Color  => BG,
+            Area   => ((X      => Area.Position.X,
+                        Y      => Area.Position.Y + Shadow),
+                       Width  => Area.Width,
+                       Height => Area.Height - 2 * Shadow),
             Radius => Margin);
-         Draw_Rounded_Rectangle
-           (Buffer,
-            Hue       => Border,
+         Buffer.Draw_Rounded_Rect
+           (Color     => Border,
             Area      => Area,
             Radius    => Margin,
             Thickness => 1);
       else
          Buffer.Fill_Rect
-           (Color  => Top,
-            X      => Area.Position.X,
-            Y      => Area.Position.Y,
-            Width  => Area.Width,
-            Height => Shadow);
+           (Color => Top,
+            Area  => ((X      => Area.Position.X,
+                       Y      => Area.Position.Y),
+                      Width  => Area.Width,
+                      Height => Shadow));
          Buffer.Fill_Rect
-           (Color  => Bottom,
-            X      => Area.Position.X,
-            Y      => Area.Position.Y + Area.Height - Shadow - 1,
-            Width  => Area.Width,
-            Height => Shadow);
+           (Color => Bottom,
+            Area  => ((X      => Area.Position.X,
+                       Y      => Area.Position.Y + Area.Height - Shadow - 1),
+                      Width  => Area.Width,
+                      Height => Shadow));
          Buffer.Fill_Rect
-           (Color  => BG,
-            X      => Area.Position.X,
-            Y      => Area.Position.Y + Shadow,
-            Width  => Area.Width,
-            Height => Area.Height - 2 * Shadow);
+           (Color => BG,
+            Area  => ((X      => Area.Position.X,
+                       Y      => Area.Position.Y + Shadow),
+                      Width  => Area.Width,
+                      Height => Area.Height - 2 * Shadow));
          Buffer.Draw_Rect
-           (Color  => Border,
-            X      => Area.Position.X,
-            Y      => Area.Position.Y,
-            Width  => Area.Width,
-            Height => Area.Height);
+           (Color => Border,
+            Area  => ((X      => Area.Position.X,
+                       Y      => Area.Position.Y),
+                      Width  => Area.Width,
+                      Height => Area.Height));
       end if;
 
       Draw_String
@@ -354,7 +349,7 @@ package body Status is
       end if;
 
       Draw_Button
-        (Display.Get_Hidden_Buffer (2), Btn_Area, "Auto Play", State, True);
+        (Display.Hidden_Buffer (2).all, Btn_Area, "Auto Play", State, True);
    end Set_Autoplay;
 
    --------------
@@ -364,8 +359,8 @@ package body Status is
    procedure Progress (Pct : Float)
    is
       N_Pct  : constant Natural := Natural (Pct * 10.0) * 10;
-      Buffer : constant Bitmap_Buffer'Class :=
-                 Display.Get_Hidden_Buffer (2);
+      Buffer : constant Any_Bitmap_Buffer :=
+                 Display.Hidden_Buffer (2);
       Max_W  : Natural;
       W      : Natural;
 
@@ -379,11 +374,11 @@ package body Status is
 
       if W > 0 then
          Buffer.Fill_Rect
-           (Color  => FG,
-            X      => Prog_Area.Position.X,
-            Y      => Prog_Area.Position.Y,
-            Width  => W,
-            Height => Prog_Area.Height);
+           (Color => FG,
+            Area  => ((X      => Prog_Area.Position.X,
+                       Y      => Prog_Area.Position.Y),
+                      Width  => W,
+                      Height => Prog_Area.Height));
       end if;
 
       G_Pct := N_Pct;
@@ -397,8 +392,8 @@ package body Status is
 
    procedure Clear_Progress
    is
-      Buffer : constant Bitmap_Buffer'Class :=
-                 Display.Get_Hidden_Buffer (2);
+      Buffer : constant Any_Bitmap_Buffer :=
+                 Display.Hidden_Buffer (2);
    begin
       if G_Pct = 0 then
          return;
@@ -406,11 +401,11 @@ package body Status is
 
       G_Pct := 0;
       Buffer.Fill_Rect
-        (Color  => Transparent,
-         X      => Prog_Area.Position.X,
-         Y      => Prog_Area.Position.Y,
-         Width  => Prog_Area.Width,
-         Height => Prog_Area.Height);
+        (Color => Transparent,
+         Area  => ((X      => Prog_Area.Position.X,
+                    Y      => Prog_Area.Position.Y),
+                   Width  => Prog_Area.Width,
+                   Height => Prog_Area.Height));
       Display.Update_Layer (2, True);
    end Clear_Progress;
 
@@ -422,8 +417,8 @@ package body Status is
    is
       Img         : constant String := Score'Img;
       Area, AreaH : Rect;
-      Buf1        : constant Bitmap_Buffer'Class :=
-                      Display.Get_Hidden_Buffer (2);
+      Buf1        : constant Any_Bitmap_Buffer :=
+                      Display.Hidden_Buffer (2);
 
    begin
       Area.Position := (Score_Area.Position.X + 10,
@@ -432,13 +427,13 @@ package body Status is
       Area.Height   := Score_Area.Height * 2 / 3 - 2;
 
       Buf1.Fill_Rect
-        (Color  => Transparent,
-         X      => Area.Position.X,
-         Y      => Area.Position.Y,
-         Width  => Area.Width,
-         Height => Area.Height);
+        (Color => Transparent,
+         Area  => ((X      => Area.Position.X,
+                    Y      => Area.Position.Y),
+                   Width  => Area.Width,
+                   Height => Area.Height));
       Draw_String
-        (Buf1,
+        (Buf1.all,
          Area       => Area,
          Msg        => Img (Img'First + 1 .. Img'Last),
          Font       => Game.Times,
@@ -452,12 +447,10 @@ package body Status is
          AreaH.Position := (High_Area.Position.X + 10,
                             High_Area.Position.Y + High_Area.Height / 3 + 2);
          Copy_Rect
-           (Buf1,
-            Area.Position.X,
-            Area.Position.Y,
-            Buf1,
-            AreaH.Position.X,
-            AreaH.Position.Y,
+           (Buf1.all,
+            Area.Position,
+            Buf1.all,
+            AreaH.Position,
             Area.Width,
             Area.Height,
             False);

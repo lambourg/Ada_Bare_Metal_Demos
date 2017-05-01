@@ -22,11 +22,12 @@
 ------------------------------------------------------------------------------
 
 with Ada.Unchecked_Conversion;
-with Interfaces;                 use Interfaces;
 
+with HAL;                        use HAL;
 with HAL.Bitmap;                 use HAL.Bitmap;
 with HAL.Framebuffer;            use HAL.Framebuffer;
-with SDMMC_Init;                 use SDMMC_Init;
+with HAL.SDMMC;                  use HAL.SDMMC;
+
 with Bitmapped_Drawing;          use Bitmapped_Drawing;
 
 with Cortex_M.Cache;             use Cortex_M.Cache;
@@ -46,7 +47,7 @@ is
 
    Units         : constant array (Natural range <>) of Character :=
                      (' ', 'k', 'M', 'G', 'T');
-   Capacity      : Unsigned_64;
+   Capacity      : UInt64;
    Error_State   : Boolean := False;
 
    Status        : Filesystem.Status_Code;
@@ -64,12 +65,13 @@ is
       Dir    : Directory_Handle;
       E      : Node_Access;
       Status : Status_Code;
+      Buffer : Bitmap_Buffer'Class := Display.DMA2D_Hidden_Buffer (1);
    begin
       if Error_State then
          return;
       end if;
 
-      if Y > Display.Get_Height then
+      if Y > Display.Height then
          return;
       end if;
 
@@ -77,7 +79,7 @@ is
 
       if Status /= OK then
          Draw_String
-           (Display.Get_Hidden_Buffer (1),
+           (Buffer,
             (0, Y),
             "!!! Error reading the directory " & Path,
             BMP_Fonts.Font12x12,
@@ -107,7 +109,7 @@ is
            and then E.Basename /= ".."
          then
             Draw_String
-              (Display.Get_Hidden_Buffer (1),
+              (Buffer,
                (0, Y),
                Path & E.Basename,
                BMP_Fonts.Font12x12,
@@ -134,9 +136,9 @@ begin
 
    loop
       if not SDCard_Device.Card_Present then
-         Display.Get_Hidden_Buffer (1).Fill (Transparent);
+         Display.Hidden_Buffer (1).Fill (Transparent);
          Draw_String
-           (Display.Get_Hidden_Buffer (1),
+           (Display.Hidden_Buffer (1).all,
             (0, 0),
             "No SD-Card detected",
             BMP_Fonts.Font12x12,
@@ -151,7 +153,7 @@ begin
          end loop;
 
       else
-         Display.Get_Hidden_Buffer (1).Fill (Transparent);
+         Display.Hidden_Buffer (1).Fill (Transparent);
          Y := 0;
          Error_State := False;
 
@@ -163,7 +165,7 @@ begin
          for Unit of Units loop
             if Capacity < 1000 or else Unit = 'T' then
                Draw_String
-                 (Display.Get_Hidden_Buffer (1),
+                 (Display.Hidden_Buffer (1).all,
                   (0, Y),
                   "SDcard size:" & Capacity'Img & " " & Unit & "B",
                   BMP_Fonts.Font12x12,
@@ -184,7 +186,7 @@ begin
 
          --  Test read speed of the card (ideal case: contiguous blocks)
          declare
-            Block : Unsigned_64 := 0;
+            Block : UInt64 := 0;
             Start : constant Time := Clock;
             Fail  : Boolean := False;
          begin
@@ -218,7 +220,7 @@ begin
                   Img (Img'First .. Img'Last - 2) := Img (Img'First + 1 .. Img'Last - 1);
                   Img (Img'Last - 1) := '.';
                   Draw_String
-                    (Display.Get_Hidden_Buffer (1),
+                    (Display.Hidden_Buffer (1).all,
                      (0, Y),
                      "Read (in MB/s): " & Img,
                      BMP_Fonts.Font12x12,
@@ -226,7 +228,7 @@ begin
                      Transparent);
                else
                   Draw_String
-                    (Display.Get_Hidden_Buffer (1),
+                    (Display.Hidden_Buffer (1).all,
                      (0, Y),
                      "*** test failure ***",
                      BMP_Fonts.Font12x12,
@@ -244,7 +246,7 @@ begin
          if Status = No_MBR_Found then
             Error_State := True;
             Draw_String
-              (Display.Get_Hidden_Buffer (1),
+              (Display.Hidden_Buffer (1).all,
                (0, Y),
                "Not an MBR partition system: " & Status'Img,
                BMP_Fonts.Font12x12,
@@ -256,7 +258,7 @@ begin
          elsif Status = No_Filesystem then
             Error_State := True;
             Draw_String
-              (Display.Get_Hidden_Buffer (1),
+              (Display.Hidden_Buffer (1).all,
                (0, Y),
                "No valid partition found",
                BMP_Fonts.Font12x12,
@@ -268,7 +270,7 @@ begin
          elsif Status /= OK then
             Error_State := True;
             Draw_String
-              (Display.Get_Hidden_Buffer (1),
+              (Display.Hidden_Buffer (1).all,
                (0, Y),
                "Error when mounting the sdcard: " & Status'Img,
                BMP_Fonts.Font12x12,

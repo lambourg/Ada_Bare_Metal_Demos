@@ -25,8 +25,8 @@
 
 pragma Restrictions (No_Elaboration_Code);
 
+with HAL;          use HAL;
 with System;       use System;
-with Interfaces;   use Interfaces;
 with Interfaces.C; use Interfaces.C;
 
 package Malloc is
@@ -41,9 +41,9 @@ package Malloc is
    function Realloc (Ptr : Address; Size : size_t) return Address;
    pragma Export (C, Realloc, "realloc");
 
-   procedure Start_Fast_Malloc (Byte_Size : Unsigned_32);
+   procedure Start_Fast_Malloc (Byte_Size : UInt32);
 
-   function Allocated return Unsigned_32;
+   function Allocated return UInt32;
    --  Total allocated memory
 
    function Is_Full return Boolean;

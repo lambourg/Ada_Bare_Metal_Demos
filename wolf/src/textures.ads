@@ -21,13 +21,13 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Interfaces; use Interfaces;
+with HAL; use HAL;
 
 package Textures is
 
    Texture_Size : constant := 128;
 
-   type Texture_Column is array (0 .. Texture_Size - 1) of Unsigned_16
+   type Texture_Column is array (0 .. Texture_Size - 1) of UInt16
      with Component_Size => 16;
 
    type Texture is array (0 .. Texture_Size - 1) of aliased Texture_Column

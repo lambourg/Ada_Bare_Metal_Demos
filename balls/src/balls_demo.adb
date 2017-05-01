@@ -31,7 +31,6 @@ with Last_Chance_Handler;  pragma Unreferenced (Last_Chance_Handler);
 --  must be somewhere in the closure of the context clauses.
 
 with System;
-with Interfaces;            use Interfaces;
 with STM32.User_Button;     use STM32.User_Button;
 with STM32.Board;           use STM32.Board;
 with STM32.RNG.Interrupts;  use STM32.RNG.Interrupts;
@@ -39,17 +38,15 @@ with STM32.RNG.Interrupts;  use STM32.RNG.Interrupts;
 with HAL;                   use HAL;
 with HAL.Bitmap;            use HAL.Bitmap;
 
-with Bitmapped_Drawing;     use Bitmapped_Drawing;
-
 procedure Balls_Demo is
    use STM32;
 
    pragma Priority (System.Priority'First);
 
    type HSV_Color is record
-      Hue : Byte;
-      Sat : Byte;
-      Val : Byte;
+      Hue : UInt8;
+      Sat : UInt8;
+      Val : UInt8;
    end record;
 
    function To_RGB (Col : HSV_Color) return Bitmap_Color;
@@ -123,7 +120,7 @@ procedure Balls_Demo is
       Speed  : Vector;
       R      : Natural;
       Col    : HSV_Color;
-      N_Hue  : Byte;
+      N_Hue  : UInt8;
    end record;
 
    function I (F : Float) return Integer
@@ -171,29 +168,29 @@ procedure Balls_Demo is
 
       case Region is
          when 0 =>
-            Ret.Red   := Byte (V);
-            Ret.Green := Byte (t);
-            Ret.Blue  := Byte (p);
+            Ret.Red   := UInt8 (V);
+            Ret.Green := UInt8 (t);
+            Ret.Blue  := UInt8 (p);
          when 1 =>
-            Ret.Red   := Byte (q);
-            Ret.Green := Byte (V);
-            Ret.Blue  := Byte (p);
+            Ret.Red   := UInt8 (q);
+            Ret.Green := UInt8 (V);
+            Ret.Blue  := UInt8 (p);
          when 2 =>
-            Ret.Red   := Byte (p);
-            Ret.Green := Byte (V);
-            Ret.Blue  := Byte (t);
+            Ret.Red   := UInt8 (p);
+            Ret.Green := UInt8 (V);
+            Ret.Blue  := UInt8 (t);
          when 3 =>
-            Ret.Red   := Byte (p);
-            Ret.Green := Byte (q);
-            Ret.Blue  := Byte (V);
+            Ret.Red   := UInt8 (p);
+            Ret.Green := UInt8 (q);
+            Ret.Blue  := UInt8 (V);
          when 4 =>
-            Ret.Red   := Byte (t);
-            Ret.Green := Byte (p);
-            Ret.Blue  := Byte (V);
+            Ret.Red   := UInt8 (t);
+            Ret.Green := UInt8 (p);
+            Ret.Blue  := UInt8 (V);
          when others =>
-            Ret.Red   := Byte (V);
-            Ret.Green := Byte (p);
-            Ret.Blue  := Byte (q);
+            Ret.Red   := UInt8 (V);
+            Ret.Green := UInt8 (p);
+            Ret.Blue  := UInt8 (q);
       end case;
 
       return Ret;
@@ -303,8 +300,8 @@ procedure Balls_Demo is
                O     : Moving_Object renames Objects (J);
                R     : constant Integer :=
                          Integer (RNG.Interrupts.Random mod R_Var) + R_Min;
-               Col   : constant Byte :=
-                         Byte (RNG.Interrupts.Random mod 255);
+               Col   : constant UInt8 :=
+                         UInt8 (RNG.Interrupts.Random mod 255);
                X_Raw : constant UInt32 :=
                          (RNG.Interrupts.Random mod
                                     UInt32 (LCD_Natural_Width - 2 * R)) +
@@ -359,7 +356,7 @@ begin
          White_Background := not White_Background;
       end if;
 
-      Display.Get_Hidden_Buffer (1).Fill
+      Display.Hidden_Buffer (1).Fill
         ((if White_Background then White else Black));
 
       for M of Objects loop
@@ -397,12 +394,11 @@ begin
       end loop;
 
       for O of Objects loop
-         Fill_Circle
-           (Display.Get_Hidden_Buffer (1),
+         Display.Hidden_Buffer (1).Fill_Circle
+           (To_RGB (O.Col),
             (X => I (O.Center (X)),
              Y => I (O.Center (Y))),
-            O.R,
-            To_RGB (O.Col));
+            O.R);
       end loop;
 
       Display.Update_Layer (1);

@@ -29,22 +29,16 @@ package body Display is
    function Get_Hidden_Buffer
      (Layer : Positive) return Bitmap.Bitmap_Buffer'Class
    is
-      Buf : constant HAL.Bitmap.Bitmap_Buffer'Class :=
-              STM32.Board.Display.Get_Hidden_Buffer (Layer);
    begin
-      return Bitmap.Bitmap_Buffer'
-        (Addr       => Buf.Addr,
-         Width      => Buf.Width,
-         Height     => Buf.Height,
-         Color_Mode => Buf.Color_Mode,
-         Swapped    => Buf.Swapped);
+      return STM32.Board.Display.DMA2D_Hidden_Buffer (Layer);
    end Get_Hidden_Buffer;
 
    ------------------
    -- Update_Layer --
    ------------------
 
-   procedure Update_Layer (Layer : Positive)
+   procedure Update_Layer
+     (Layer : Positive)
    is
    begin
       STM32.Board.Display.Update_Layer (Layer);
@@ -64,7 +58,7 @@ package body Display is
    -- Flush_Cache --
    -----------------
 
-   procedure Flush_Cache (Buffer : HAL.Bitmap.Bitmap_Buffer'Class)
+   procedure Flush_Cache (Buffer : Bitmap.Bitmap_Buffer'Class)
    is
    begin
       Cortex_M.Cache.Clean_DCache (Buffer.Addr, Buffer.Buffer_Size);

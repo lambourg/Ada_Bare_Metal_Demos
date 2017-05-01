@@ -21,11 +21,11 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with HAL.Bitmap;
 with HAL.Framebuffer;
 
-with RPi.Bitmap;
+with Bitmap;
 with Rpi_Board;
+with RPi.Bitmap;
 with RPi.Framebuffer;
 
 package Display is
@@ -33,7 +33,7 @@ package Display is
    LCD_W  : constant Natural := Rpi_Board.Display_Width;
    LCD_H  : constant Natural := Rpi_Board.Display_Height;
 
-   Use_Copy_Rect_Always : constant Boolean := False;
+   Use_Column_Cache : constant Boolean := False;
    --  When copying from the cached data to the string, we need this copy to
    --  be synchronous, so that the column can later on be duplicated safely if
    --  needed.
@@ -46,13 +46,13 @@ package Display is
      with Inline_Always;
 
    function Get_Hidden_Buffer
-     (Layer : Positive) return HAL.Bitmap.Bitmap_Buffer'Class
+     (Layer : Positive) return Bitmap.Bitmap_Buffer
      with Inline_Always;
 
    procedure Update_Layer (Layer : Positive)
      with Inline_Always;
 
-   procedure Flush_Cache (Buffer : HAL.Bitmap.Bitmap_Buffer'Class);
+   procedure Flush_Cache (Buffer : Bitmap.Bitmap_Buffer'Class);
 
 --     procedure Wait_Transfer is null;
    procedure Wait_Transfer renames RPi.Bitmap.Wait_Transfer;
@@ -61,7 +61,7 @@ private
 
    function Get_Color_Mode
      (Layer : Positive) return HAL.Framebuffer.FB_Color_Mode
-   is (RPi.Framebuffer.Get_Color_Mode (Rpi_Board.Display));
+   is (RPi.Framebuffer.Color_Mode (Rpi_Board.Display));
 
    function Is_Swapped return Boolean
    is (False);

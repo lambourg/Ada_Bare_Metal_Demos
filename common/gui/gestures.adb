@@ -21,7 +21,7 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with System;
+--  with System;
 with Ada.Real_Time;   use Ada.Real_Time;
 
 with STM32.Board;     use STM32.Board;
@@ -52,8 +52,8 @@ package body Gestures is
    -- Touch_Task --
    ----------------
 
-   task Touch_Task
-     with Priority => System.Priority'Last;
+   task Touch_Task;
+--       with Priority => System.Priority'Last;
 
    -----------------------
    -- Interrupt_Handler --
@@ -108,10 +108,9 @@ package body Gestures is
             Now        : constant Time := Clock;
             Data       : constant TP_State :=
                            STM32.Board.Touch_Panel.Get_All_Touch_Points;
-            New_Points : array (Byte range 0 .. 1) of TP_Touch_State :=
+            New_Points : array (UInt8 range 0 .. 1) of TP_Touch_State :=
                            (others => Null_Touch_State);
             Gesture    : Gesture_Data := No_Gesture_Data;
-            use type HAL.Byte;
 
          begin
             for Point of Data loop

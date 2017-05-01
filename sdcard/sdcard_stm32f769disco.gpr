@@ -1,19 +1,21 @@
-with "../drivers/boards/stm32f769disco.gpr";
+with "../drivers/boards/stm32f769_discovery.gpr";
+with "../common/common_stm32";
 
 project SDCard_STM32F769Disco extends "../common/common.gpr" is
 
-   for Runtime ("Ada") use STM32F769Disco'Runtime("Ada");
+   for Runtime ("Ada") use STM32F769_discovery'Runtime("Ada");
    for Object_Dir use "obj/stm32f769disco";
 
    for Main use ("sdcard_demo.adb");
-   for Source_Dirs use ("src",
-                        "../services/filesystem/**");
+   for Source_Dirs use
+     ("src",
+      "../services/filesystem/**") &
+     Common_STM32.Sources;
 
    package Linker is
       for Default_Switches ("Ada") use
         ("-Wl,--defsym=__stack_size=32768",
-         "-Wl,--gc-sections",
-         "-Wl,--print-memory-usage");
+         "-Wl,--gc-sections");
    end Linker;
 
 end SDCard_STM32F769Disco;

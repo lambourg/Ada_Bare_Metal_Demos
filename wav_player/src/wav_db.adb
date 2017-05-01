@@ -23,7 +23,6 @@
 
 with System;
 with Ada.Unchecked_Conversion;
-with Interfaces;     use Interfaces;
 
 with HAL;            use HAL;
 with STM32.SDRAM;    use STM32.SDRAM;
@@ -70,7 +69,7 @@ package body Wav_DB is
       Ret     : String := S;
       Idx_S   : Natural := S'First;
       Idx_Ret : Natural := Ret'First - 1;
-      Val     : Byte;
+      Val     : UInt8;
       Unicode : HAL.UInt32;
 
    begin
@@ -240,8 +239,9 @@ package body Wav_DB is
                declare
                   N : constant String := E.Basename;
                begin
-                  if N'Length > 4
-                    and then N (N'Last - 3 .. N'Last) = ".wav"
+                  if N'Length > 4 and then
+                    (N (N'Last - 3 .. N'Last) = ".wav" or else
+                     N (N'Last - 3 .. N'Last) = ".WAV")
                   then
                      Add_File (Path & E.Basename);
                   end if;

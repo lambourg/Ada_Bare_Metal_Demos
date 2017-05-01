@@ -23,7 +23,6 @@
 
 with HAL.Bitmap;            use HAL.Bitmap;
 
-with Bitmapped_Drawing;     use Bitmapped_Drawing;
 with Hershey_Fonts.FuturaL; use Hershey_Fonts;
 
 with Grid; use Grid;
@@ -43,9 +42,9 @@ package Game is
    function Get_Status_Area return Rect;
 
    procedure Init_Cells_Buffer;
-   procedure Draw (Dst : Bitmap_Buffer'Class);
+   procedure Draw (Dst : in out Bitmap_Buffer'Class);
    procedure Init_Slide (Old_Grid : CGrid; Trace : Trace_Grid_T);
-   function Slide (Dst : Bitmap_Buffer'Class) return Boolean;
+   function Slide (Dst : in out Bitmap_Buffer'Class) return Boolean;
    procedure Start;
    procedure Add_Value;
    function Can_Move (Direction : Direction_E) return Boolean;

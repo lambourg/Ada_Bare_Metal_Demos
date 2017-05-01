@@ -1,0 +1,65 @@
+aggregate project All_Demos is
+
+   type Board_Type is
+     ("stm32f429disco",
+      "stm32f469disco",
+      "stm32f746disco",
+      "stm32f769disco",
+      "rpi2",
+      "rpi3"};
+   Board : Board_Type := external ("Board", "stm32f429disco");
+
+   type RTS_Profile_Type is ("ravenscar-sfp", "ravenscar-full");
+   RTS_Profile : RTS_Profile_Type := external ("RTS_Profile", "ravenscar-sfp");
+
+   type BUILD_TYPE is ("Debug", "Production");
+   Build : BUILD_Type := external ("PLATFORM_BUILD", "Debug");
+
+   case Board is
+      when "rpi3" =>
+         for Target use "aarch64-elf";
+      when others =>
+         for Target use "arm-eabi";
+   end case;
+
+   for Runtime ("Ada") use RTS_Profile & "-" & Board;
+
+   for External ("RTS_Profile") use RTS_Profile;
+   for External ("PLATFORM_BUILD") use Build;
+
+   case Board is
+      when "stm32f429disco" =>
+         for Project_Files use
+           ("balls/balls_stm32f429disco.gpr",
+            "conway/conway_stm32f429disco.gpr",
+            "fractals/fractals_stm32f429disco.gpr",
+            "wolf/wolf_stm32f429disco.gpr");
+      when "stm32f469disco" | "stm32f746disco" | "stm32f769disco" =>
+         for Project_Files use
+           ("balls/balls_" & Board & ".gpr",
+            "conway/conway_" & Board & ".gpr",
+            "fractals/fractals_" & Board & ".gpr",
+            "sdcard/sdcard_" & Board & ".gpr",
+            "wav_player/wav_" & Board & ".gpr",
+            "wolf/wolf_" & Board & ".gpr");
+
+         case RTS_Profile is
+            when "ravenscar-full" =>
+               for Project_Files use Project'Project_Files &
+                 ("2048/demo_2048_stm32f769disco.gpr");
+            when others =>
+         end case;
+      when "rpi2" | "rpi3" =>
+         for Project_Files use
+           ("wolf/wolf_" & Board & ".gpr",
+            "rpi2-mmc/sdcard_" & Board & ".gpr");
+   end case;
+
+
+   package Ide is
+      for Program_Host use "localhost:4242";
+      for Communication_Protocol use "remote";
+      for Connection_Tool use "st-util";
+   end Ide;
+
+end All_Demos;

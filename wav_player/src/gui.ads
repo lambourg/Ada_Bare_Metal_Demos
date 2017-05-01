@@ -21,6 +21,9 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
+with Gestures;
+with Wav_Player;
+
 package GUI is
 
    procedure Initialize;
@@ -30,6 +33,9 @@ package GUI is
 
    procedure DB_Updated (Card_Present : Boolean);
    --  To call when a SDCard is inserted
+
+   procedure On_Audio_Event (Event : Wav_Player.Audio_State);
+   procedure On_Gesture_Event (Event : Gestures.Gesture_Data);
 
    procedure Main_Loop;
 

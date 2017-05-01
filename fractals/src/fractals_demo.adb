@@ -6,6 +6,7 @@ with HAL.Framebuffer;
 with HAL.Bitmap;
 with HAL.Touch_Panel;
 
+with Bitmap_Color_Conversion;
 with Bitmapped_Drawing;
 with BMP_Fonts;
 
@@ -15,7 +16,8 @@ with Float_Support; use Float_Support;
 procedure Fractals_Demo
 is
    Max_Depth : constant Positive := 2048;
-   Colors    : array (0 .. Max_Depth) of HAL.Bitmap.Bitmap_Color;
+   Colors    : array (0 .. Max_Depth) of HAL.UInt32;
+   C_Mode    : constant HAL.Bitmap.Bitmap_Color_Mode := HAL.Bitmap.RGB_888;
 
    Current_Screen : Screen;
 
@@ -46,32 +48,39 @@ is
    procedure Initialize_Color_Map
    is
       use HAL;
-      use type HAL.Byte;
+      use Bitmap_Color_Conversion;
 
       function Fill
-        (Max   : HAL.Byte;
-         Ratio : Float) return HAL.Byte;
+        (Max   : HAL.UInt8;
+         Ratio : Float) return HAL.UInt8;
 
       function Fill
-        (Max   : HAL.Byte;
-         Ratio : Float) return HAL.Byte
+        (Max   : HAL.UInt8;
+         Ratio : Float) return HAL.UInt8
       is
       begin
-         return Byte (Sqrt (Ratio) * Float (Max));
+         return UInt8 (Sqrt (Ratio) * Float (Max));
       end Fill;
+
+      Color : HAL.Bitmap.Bitmap_Color;
+
    begin
-      Colors := (others => (255, 0, 0, 0));
+      Colors := (others => 0);
+      Color := (Alpha => 255, others => 0);
 
       for J in 0 .. 63 loop
-         Colors (J).Red := Fill (255, Float (J) / 64.0);
+         Color.Red := Fill (255, Float (J) / 64.0);
+         Colors (J) := Bitmap_Color_To_Word (C_Mode, Color);
       end loop;
+
+      Color.Red := 255;
 
       for J in 64 .. 2047 loop
-         Colors (J).Red := 255;
-         Colors (J).Green := Fill (255, Float (J - 64) / (2048.0 - 64.0));
+         Color.Green := Fill (255, Float (J - 64) / (2048.0 - 64.0));
+         Colors (J) := Bitmap_Color_To_Word (C_Mode, Color);
       end loop;
 
-      Colors (Max_Depth) := HAL.Bitmap.Black;
+      Colors (Max_Depth) := 0;
    end Initialize_Color_Map;
 
    -----------------
@@ -81,8 +90,8 @@ is
    procedure Init_Screen (F : Fractal_Ref)
    is
       Res   : constant Screen := F.Default_Screen;
-      LCD_W : constant Base_Float := Base_Float (Display.Get_Width);
-      LCD_H : constant Base_Float := Base_Float (Display.Get_Height);
+      LCD_W : constant Base_Float := Base_Float (Display.Width);
+      LCD_H : constant Base_Float := Base_Float (Display.Height);
    begin
       Current_Screen := F.Default_Screen;
 
@@ -108,9 +117,9 @@ is
    begin
       return
         (X => Current_Screen.X0 +
-           Current_Screen.Width / Base_Float (Display.Get_Width) * Base_Float (X),
+           Current_Screen.Width / Base_Float (Display.Width) * Base_Float (X),
          Y => Current_Screen.Y0 +
-           Current_Screen.Height / Base_Float (Display.Get_Height) * Base_Float (Y));
+           Current_Screen.Height / Base_Float (Display.Height) * Base_Float (Y));
    end To_Coord;
 
    ---------------
@@ -128,12 +137,12 @@ is
       W  : Integer;
       H  : Integer;
    begin
-      if W0 * Display.Get_Height > H0 * Display.Get_Width then
+      if W0 * Display.Height > H0 * Display.Width then
          --  H not big enough to keep aspect ratio
-         H := (W0 * Display.Get_Height) / Display.Get_Width;
+         H := (W0 * Display.Height) / Display.Width;
          W := W0;
       else
-         W := (H0 * Display.Get_Width) / Display.Get_Height;
+         W := (H0 * Display.Width) / Display.Height;
          H := H0;
       end if;
 
@@ -154,13 +163,13 @@ is
       H   : constant Integer := Box.Y1 - Box.Y0 + 1;
    begin
       Current_Screen.X0     := Current_Screen.X0 +
-        Current_Screen.Width / Base_Float (Display.Get_Width) * Base_Float (Box.X0);
+        Current_Screen.Width / Base_Float (Display.Width) * Base_Float (Box.X0);
       Current_Screen.Y0     := Current_Screen.Y0 +
-        Current_Screen.Height / Base_Float (Display.Get_Height) * Base_Float (Box.Y0);
+        Current_Screen.Height / Base_Float (Display.Height) * Base_Float (Box.Y0);
       Current_Screen.Width  :=
-        Current_Screen.Width / Base_Float (Display.Get_Width) * Base_Float (W);
+        Current_Screen.Width / Base_Float (Display.Width) * Base_Float (W);
       Current_Screen.Height :=
-        Current_Screen.Height / Base_Float (Display.Get_Height) * Base_Float (H);
+        Current_Screen.Height / Base_Float (Display.Height) * Base_Float (H);
    end Zoom;
 
    ---------------
@@ -169,8 +178,8 @@ is
 
    procedure Draw_Zoom (Zoom_Box : Zoom_Box_Record)
    is
-      Buff : constant HAL.Bitmap.Bitmap_Buffer'Class :=
-               Display.Get_Hidden_Buffer (2);
+      Buff : constant HAL.Bitmap.Any_Bitmap_Buffer :=
+               Display.Hidden_Buffer (2);
       Box  : Zoom_Box_Record := Zoom_Area (Zoom_Box);
       W    : Integer := Box.X1 - Box.X0 + 1;
       H    : Integer := Box.Y1 - Box.Y0 + 1;
@@ -188,24 +197,25 @@ is
          H := H + Box.Y0;
          Box.Y0 := 0;
       end if;
-      if Box.X0 + W > Display.Get_Width then
-         W := Display.Get_Width - Box.X0;
+      if Box.X0 + W > Display.Width then
+         W := Display.Width - Box.X0;
       end if;
-      if Box.Y0 + H >= Display.Get_Height then
-         H := Display.Get_Height - Box.Y0;
+      if Box.Y0 + H >= Display.Height then
+         H := Display.Height - Box.Y0;
       end if;
 
       Buff.Fill_Rect (Color  => (Alpha => 73, others => 255),
-                      X      => Box.X0,
-                      Y      => Box.Y0,
-                      Width  => W,
-                      Height => H);
+                      Area   => ((X      => Box.X0,
+                                  Y      => Box.Y0),
+                                 Width  => W,
+                                 Height => H));
       --  Now draw the square drawn by the user
-      Buff.Draw_Rect (Color  => HAL.Bitmap.White,
-                      X      => Integer'Min (Zoom_Box.X0, Zoom_Box.X1),
-                      Y      => Integer'Min (Zoom_Box.Y0, Zoom_Box.Y1),
-                      Width  => abs (Zoom_Box.X0 - Zoom_Box.X1) + 1,
-                      Height => abs (Zoom_Box.Y0 - Zoom_Box.Y1) + 1);
+      Buff.Draw_Rect
+        (Color  => HAL.Bitmap.White,
+         Area   => ((X      => Integer'Min (Zoom_Box.X0, Zoom_Box.X1),
+                     Y      => Integer'Min (Zoom_Box.Y0, Zoom_Box.Y1)),
+                    Width  => abs (Zoom_Box.X0 - Zoom_Box.X1) + 1,
+                    Height => abs (Zoom_Box.Y0 - Zoom_Box.Y1) + 1));
       Display.Update_Layer (2);
    end Draw_Zoom;
 
@@ -215,7 +225,7 @@ is
 
 begin
    Display.Initialize (HAL.Framebuffer.Landscape, HAL.Framebuffer.Polling);
-   Display.Initialize_Layer (1, HAL.Bitmap.RGB_888);
+   Display.Initialize_Layer (1, C_Mode);
    Display.Initialize_Layer (2, HAL.Bitmap.ARGB_4444);
    Touch_Panel.Initialize (HAL.Framebuffer.Landscape);
    STM32.User_Button.Initialize;
@@ -227,14 +237,14 @@ begin
       Init_Screen (The_Fractals (Current));
       Same_Fractal_Loop :
       loop
-         Display.Get_Hidden_Buffer (1).Fill (0);
+         Display.Hidden_Buffer (1).Fill (0);
          Display.Update_Layer (1, True);
-         Display.Get_Hidden_Buffer (2).Fill (0);
-         Display.Get_Hidden_Buffer (2).Wait_Transfer;
+         Display.Hidden_Buffer (2).Fill (0);
+         Display.Hidden_Buffer (2).Sync;
          Bitmapped_Drawing.Draw_String
-           (Display.Get_Hidden_Buffer (2),
-            Start      => (X => Display.Get_Width / 2 - 112,
-                           Y => Display.Get_Height / 2 - 12),
+           (Display.Hidden_Buffer (2).all,
+            Start      => (X => Display.Width / 2 - 112,
+                           Y => Display.Height / 2 - 12),
             Msg        => "Calculating...",
             Font       => BMP_Fonts.Font16x24,
             Foreground => (128, 255, 255, 255),
@@ -246,15 +256,14 @@ begin
             declare
                Size : constant Natural := 2 ** J;
             begin
-               for Y in 0 .. Display.Get_Height / Size - 1 loop
+               for Y in 0 .. Display.Height / Size - 1 loop
                   declare
                      use HAL;
-                     use type HAL.UInt32;
-                     Buff : constant HAL.Bitmap.Bitmap_Buffer'Class :=
-                              Display.Get_Hidden_Buffer (1);
+                     Buff : constant HAL.Bitmap.Any_Bitmap_Buffer :=
+                              Display.Hidden_Buffer (1);
                      Col  : UInt32;
                   begin
-                     for X in 0 .. Display.Get_Width / Size - 1 loop
+                     for X in 0 .. Display.Width / Size - 1 loop
                         if First_Pass then
                            Do_Paint := True;
                         else
@@ -266,32 +275,32 @@ begin
 
                            elsif X = 0
                              or else Y = 0
-                             or else (X + 1) * Size >= Display.Get_Width
-                             or else (Y + 1) * Size >= Display.Get_Height
+                             or else (X + 1) * Size >= Display.Width
+                             or else (Y + 1) * Size >= Display.Height
                            then
                               --  Always draw borders
                               Do_Paint := True;
 
                            else
-                              Col := Buff.Get_Pixel (X * Size, Y * Size);
+                              Col := Buff.Pixel ((X * Size, Y * Size));
                               Do_Paint := False;
 
-                              if Buff.Get_Pixel ((X - 1) * Size,
-                                                 (Y - 1) * Size) /= Col
-                                or else Buff.Get_Pixel ((X + 1) * Size,
-                                                        (Y + 1) * Size) /= Col
-                                or else Buff.Get_Pixel ((X + 1) * Size,
-                                                        (Y - 1) * Size) /= Col
-                                or else Buff.Get_Pixel ((X - 1) * Size,
-                                                        (Y + 1) * Size) /= Col
-                                or else Buff.Get_Pixel (X * Size,
-                                                        (Y - 1) * Size) /= Col
-                                or else Buff.Get_Pixel ((X - 1) * Size,
-                                                        Y * Size) /= Col
-                                or else Buff.Get_Pixel (X * Size,
-                                                        (Y + 1) * Size) /= Col
-                                or else Buff.Get_Pixel ((X + 1) * Size,
-                                                        Y * Size) /= Col
+                              if Buff.Pixel (((X - 1) * Size,
+                                             (Y - 1) * Size)) /= Col
+                                or else Buff.Pixel (((X + 1) * Size,
+                                                    (Y + 1) * Size)) /= Col
+                                or else Buff.Pixel (((X + 1) * Size,
+                                                    (Y - 1) * Size)) /= Col
+                                or else Buff.Pixel (((X - 1) * Size,
+                                                    (Y + 1) * Size)) /= Col
+                                or else Buff.Pixel ((X * Size,
+                                                    (Y - 1) * Size)) /= Col
+                                or else Buff.Pixel (((X - 1) * Size,
+                                                    Y * Size)) /= Col
+                                or else Buff.Pixel ((X * Size,
+                                                    (Y + 1) * Size)) /= Col
+                                or else Buff.Pixel (((X + 1) * Size,
+                                                      Y * Size)) /= Col
                               then
                                  Do_Paint := True;
                               end if;
@@ -306,13 +315,11 @@ begin
                                           Max_Depth);
                            begin
                               if Size > 1 then
-                                 Buff.Fill_Rect (Colors (Iter),
-                                                 X * Size,
-                                                 Y * Size,
-                                                 Size,
-                                                 Size);
+                                 Buff.Fill_Rect
+                                   (Colors (Iter),
+                                    ((X * Size, Y * Size), Size, Size));
                               else
-                                 Buff.Set_Pixel (X, Y, Colors (Iter));
+                                 Buff.Set_Pixel ((X, Y), Colors (Iter));
                               end if;
                            end;
                         end if;
@@ -330,7 +337,7 @@ begin
             end;
          end loop;
 
-         Display.Get_Hidden_Buffer (2).Fill (0);
+         Display.Hidden_Buffer (2).Fill (0);
          Display.Update_Layer (2);
 
          Zoom_Loop :

@@ -54,7 +54,7 @@ package body Filesystem.FAT.Files is
    begin
       if not File.Buffer_Filled and then File.Mode /= Write_Mode then
          if not File.FS.Controller.Read
-           (Absolute_Block (File),
+           (HAL.UInt64 (Absolute_Block (File)),
             File.Buffer)
          then
             --  Read error
@@ -212,8 +212,10 @@ package body Filesystem.FAT.Files is
    is
       function To_U32 is new Ada.Unchecked_Conversion
         (System.Address, Unsigned_32);
+      use HAL;
 
-      Data        : File_Data (1 .. Length) with Import, Address => Addr;
+      Data        : Block (1 .. Natural (Length))
+        with Import, Address => Addr;
       --  Byte array representation of the buffer to read
 
       Addr_Int    : constant Unsigned_32 := To_U32 (Addr);
@@ -224,7 +226,7 @@ package body Filesystem.FAT.Files is
       Data_Length : FAT_File_Size := Data'Length;
       --  The total length to read
 
-      Data_Idx    : FAT_File_Size := Data'First;
+      Data_Idx    : Natural := Data'First;
       --  Index into the data array of the next bytes to read
 
       R_Length    : FAT_File_Size;
@@ -282,22 +284,21 @@ package body Filesystem.FAT.Files is
                   File.FS.Blocks_Per_Cluster - File.Current_Block);
 
                if not File.FS.Controller.Read
-                 (Absolute_Block (File),
-                  HAL.Byte_Array
-                    (Data
-                      (Data_Idx ..
-                       Data_Idx +
-                         FAT_File_Size (N_Blocks) * File.FS.Block_Size - 1)))
+                 (UInt64 (Absolute_Block (File)),
+                  Data
+                    (Data_Idx ..
+                         Data_Idx +
+                           Natural (N_Blocks) * Natural (File.FS.Block_Size) - 1))
                then
                   --  Read error: return the number of data read so far
-                  Length := Data_Idx - Data'First;
+                  Length := FAT_File_Size (Data_Idx - Data'First);
                   return Disk_Error;
                end if;
 
                Status := Next_Block (File, Positive (N_Blocks));
 
                if Status /= OK then
-                  Length := Data_Idx - Data'First;
+                  Length := FAT_File_Size (Data_Idx - Data'First);
                   return Status;
                end if;
 
@@ -313,21 +314,21 @@ package body Filesystem.FAT.Files is
 
                if Status /= OK then
                   --  read error: return the number of bytes read so far
-                  Length := Data_Idx - Data'First;
+                  Length := FAT_File_Size (Data_Idx - Data'First);
                   return Status;
                end if;
 
-               Data (Data_Idx .. Data_Idx + 511) := File_Data (File.Buffer);
+               Data (Data_Idx .. Data_Idx + 511) := Block (File.Buffer);
 
                Status := Next_Block (File);
 
                if Status /= OK then
-                  Length := Data_Idx - Data'First;
+                  Length := FAT_File_Size (Data_Idx - Data'First);
                   return Status;
                end if;
             end if;
 
-            Data_Idx := Data_Idx + FAT_File_Size (N_Blocks) * 512;
+            Data_Idx := Data_Idx + Natural (N_Blocks) * 512;
             File.Bytes_Total :=
               File.Bytes_Total + FAT_File_Size (N_Blocks) * 512;
             Data_Length := Data_Length - FAT_File_Size (N_Blocks) * 512;
@@ -339,24 +340,24 @@ package body Filesystem.FAT.Files is
 
             if Status /= OK then
                --  read error: return the number of bytes read so far
-               Length := Data_Idx - Data'First;
+               Length := FAT_File_Size (Data_Idx - Data'First);
                return Status;
             end if;
 
             R_Length := FAT_File_Size'Min (File.Buffer'Length - Idx,
-                                       Data_Length);
-            Data (Data_Idx .. Data_Idx + R_Length - 1) := File_Data
-              (File.Buffer (Natural (Idx) .. Natural (Idx + R_Length - 1)));
+                                           Data_Length);
+            Data (Data_Idx .. Data_Idx + Natural (R_Length) - 1) :=
+              File.Buffer (Natural (Idx) .. Natural (Idx + R_Length - 1));
 
-            Data_Idx           := Data_Idx + R_Length;
+            Data_Idx         := Data_Idx + Natural (R_Length);
             File.Bytes_Total := File.Bytes_Total + R_Length;
-            Data_Length        := Data_Length - R_Length;
+            Data_Length      := Data_Length - R_Length;
 
             if Idx + R_Length = File.FS.Block_Size then
                Status := Next_Block (File);
 
                if Status /= OK then
-                  Length := Data_Idx - Data'First;
+                  Length := FAT_File_Size (Data_Idx - Data'First);
                   return Status;
                end if;
             end if;
@@ -379,7 +380,7 @@ package body Filesystem.FAT.Files is
    is
       procedure Inc_Size (Amount : FAT_File_Size);
 
-      Data        : aliased File_Data (1 .. Length) with Address => Addr;
+      Data        : aliased Block (1 .. Natural (Length)) with Address => Addr;
       --  Byte array representation of the data to write
 
       Idx         : FAT_File_Size;
@@ -387,7 +388,7 @@ package body Filesystem.FAT.Files is
       Data_Length : FAT_File_Size := Data'Length;
       --  The total length to read
 
-      Data_Idx    : FAT_File_Size := Data'First;
+      Data_Idx    : Natural := Data'First;
       --  Index into the data array of the next bytes to write
 
       N_Blocks    : FAT_File_Size;
@@ -405,7 +406,7 @@ package body Filesystem.FAT.Files is
       procedure Inc_Size (Amount : FAT_File_Size)
       is
       begin
-         Data_Idx          := Data_Idx + Amount;
+         Data_Idx          := Data_Idx + Natural (Amount);
          File.Bytes_Total  := File.Bytes_Total + Amount;
          Data_Length       := Data_Length - Amount;
 
@@ -440,7 +441,7 @@ package body Filesystem.FAT.Files is
             Data'Length);
 
          File.Buffer (Natural (Idx) .. Natural (Idx + W_Length - 1)) :=
-           Block (Data (Data_Idx .. Data_Idx + W_Length - 1));
+           Block (Data (Data_Idx .. Data_Idx + Natural (W_Length - 1)));
          File.Buffer_Dirty := True;
 
          Inc_Size (W_Length);
@@ -477,8 +478,8 @@ package body Filesystem.FAT.Files is
 
          --  Fill directly the user data
          if not File.FS.Controller.Write
-           (Absolute_Block (File),
-            Block (Data (Data_Idx .. Data_Idx + W_Length - 1)))
+           (HAL.UInt64 (Absolute_Block (File)),
+            Block (Data (Data_Idx .. Data_Idx + Natural (W_Length - 1))))
          then
             return Disk_Error;
          end if;
@@ -520,7 +521,7 @@ package body Filesystem.FAT.Files is
    begin
       if File.Buffer_Dirty then
          if not File.FS.Controller.Write
-           (Absolute_Block (File),
+           (HAL.UInt64 (Absolute_Block (File)),
             File.Buffer)
          then
             return Disk_Error;

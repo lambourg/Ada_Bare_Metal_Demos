@@ -22,17 +22,17 @@
 ------------------------------------------------------------------------------
 
 with System;
-with Interfaces; use Interfaces;
 
-with HAL;        use HAL;
-with HAL.Bitmap; use HAL.Bitmap;
+with HAL;                     use HAL;
+with HAL.Bitmap;              use HAL.Bitmap;
+with Bitmap_Color_Conversion; use Bitmap_Color_Conversion;
 
 with Bitmap;
-with Display;    use Display;
-with Math;       use Math;
-with Playground; use Playground;
-with Raycaster;  use Raycaster;
-with Textures;   use Textures;
+with Display;                 use Display;
+with Math;                    use Math;
+with Playground;              use Playground;
+with Raycaster;               use Raycaster;
+with Textures;                use Textures;
 
 --  Visible tiles
 with Textures.Barrel;
@@ -154,14 +154,14 @@ package body Renderer is
 
    procedure Draw_Wall
      (Ray    : Trace_Point;
-      Buffer : HAL.Bitmap.Bitmap_Buffer'Class;
+      Buffer : in out Bitmap.Bitmap_Buffer'Class;
       Cache  : in out Column_Info);
 
    procedure Sort_Sprites
      (Visible_Tiles : Visible_Elements);
 
    procedure Draw_Sprites
-     (Buffer : Bitmap_Buffer'Class;
+     (Buffer : in out Bitmap_Buffer'Class;
       Rays   : Trace_Points);
 
    package Tasks is
@@ -170,7 +170,7 @@ package body Renderer is
 
       procedure Copy_Sprites_Buffer
         (Cache  : Column_Info;
-         Buf    : HAL.Bitmap.Bitmap_Buffer'Class;
+         Buf    : in out HAL.Bitmap.Bitmap_Buffer'Class;
          X      : Natural;
          Y      : Natural;
          Height : Natural);
@@ -208,7 +208,7 @@ package body Renderer is
             Bg (J) := Bg_Color
               (UInt16
                  (Bitmap_Color_To_Word
-                      (Color_Mode,
+                      (Playground.Color_Mode,
                        (255, 14, 112, 112))),
                J);
          else
@@ -408,10 +408,10 @@ package body Renderer is
          begin
             --  We divide by 2**7 (so shift right of 7 bit) but then the value
             --  is 5 bit at position 11, this means a shift left of 11 - 7
-            R := UInt16 (Shift_Left ((M * R + Gr5) and 16#1F80#, 11 - 7));
+            R := Shift_Left ((M * R + Gr5) and 16#1F80#, 11 - 7);
             --  Similar to above: shift right of 7 bits + shift left of 5 bits
-            G := UInt16 (Shift_Right ((M * G + Gr6) and 16#3F80#, 7 - 5));
-            B := UInt16 (Shift_Right ((M * B + Gr5) and 16#1F80#, 7));
+            G := Shift_Right ((M * G + Gr6) and 16#3F80#, 7 - 5);
+            B := Shift_Right ((M * B + Gr5) and 16#1F80#, 7);
 
             Color := R or G or B;
          end;
@@ -424,30 +424,22 @@ package body Renderer is
 
    procedure Draw_Wall
      (Ray    : Trace_Point;
-      Buffer : HAL.Bitmap.Bitmap_Buffer'Class;
+      Buffer : in out Bitmap.Bitmap_Buffer'Class;
       Cache  : in out Column_Info)
    is
       X, Y    : Natural;
       S       : constant Scaler := Get_Scaler (Ray.Col, Ray.Dist);
 
-      Color   : UInt16;
-      Texture : Textures.Texture_Column_Access;
-      Margin  : Natural;
+      Color       : UInt16;
+      Texture     : Textures.Texture_Column_Access;
+      Margin      : Integer;
+      Prev_Margin : Natural;
 
       use type System.Address;
 
    begin
       if Ray.Tile = Empty then
          return;
-      end if;
-
-      if Cache.Col_Buffer.Addr = System.Null_Address then
-         Cache.Col_Buffer :=
-           (Addr       => Cache.Column'Address,
-            Width      => 1,
-            Height     => LCD_H,
-            Color_Mode => Color_Mode,
-            Swapped    => Display.Is_Swapped);
       end if;
 
       X := Natural
@@ -464,11 +456,9 @@ package body Renderer is
       then
          Copy_Rect
            (Src_Buffer  => Buffer,
-            X_Src       => Cache.Prev_Col,
-            Y_Src       => 0,
-            Dst_Buffer  => Buffer,
-            X_Dst       => Ray.Col,
-            Y_Dst       => 0,
+            Src_Pt      => (Cache.Prev_Col, 0),
+            Dst_Buffer  => Bitmap_Buffer'Class (Buffer),
+            Dst_Pt      => (Ray.Col, 0),
             Width       => 1,
             Height      => LCD_H,
             Synchronous => False,
@@ -477,19 +467,19 @@ package body Renderer is
          return;
       end if;
 
---        if Display.Use_Copy_Rect_Always then
---           --  Wait for latest DMA transfers to terminate before overriding the
---           --  source buffer
---           Display.Wait_Transfer;
---        end if;
-
-      --  Fill top and bottom
       Margin := (LCD_H - S.Height) / 2;
-      if Margin > Cache.Prev_Top then
-         Cache.Column (Cache.Prev_Top .. Margin - 1) :=
-           Bg (Cache.Prev_Top .. Margin - 1);
+
+      --  Fill top & bottom
+      if S.Height < Cache.Prev_Height then
+         Prev_Margin := (LCD_H - Cache.Prev_Height) / 2;
+         Cache.Column (Prev_Margin .. Margin - 1) :=
+           Bg (Prev_Margin .. Margin - 1);
+         Cache.Column
+           (Margin + S.Height .. LCD_H - Prev_Margin - 1) :=
+           Bg (Margin + S.Height .. LCD_H - Prev_Margin - 1);
       end if;
 
+      --  Fill wall
       if S.Dist >= Float (Max_Fog_Dist) then
          --  Fog is complete, just fill with the grey value
          Cache.Column (Margin .. Margin + S.Height - 1) :=
@@ -516,6 +506,7 @@ package body Renderer is
                   end if;
                   Color := Texture (Y);
                   Handle_Mist (Color, M, Gr5, Gr6);
+
                   Cache.Column (Margin + Row) := Color;
                end loop;
             end;
@@ -556,12 +547,6 @@ package body Renderer is
          end if;
       end if;
 
-      if Cache.Prev_Top + Cache.Prev_Height > Margin + S.Height then
-         Cache.Column
-           (Margin + S.Height .. Cache.Prev_Top + Cache.Prev_Height - 1) :=
-           Bg (Margin + S.Height .. Cache.Prev_Top + Cache.Prev_Height - 1);
-      end if;
-
       Cache.Tile_X      := X;
       Cache.Tile_Scale  := S.Scale;
       Cache.Tile_Kind   := Ray.Tile;
@@ -569,22 +554,19 @@ package body Renderer is
       Cache.Prev_Top    := Margin;
       Cache.Prev_Height := S.Height;
 
-      if Display.Use_Copy_Rect_Always then
-         Display.Flush_Cache (Cache.Col_Buffer);
+      if Display.Use_Column_Cache then
          Copy_Rect
            (Src_Buffer  => Cache.Col_Buffer,
-            X_Src       => 0,
-            Y_Src       => 0,
-            Dst_Buffer  => Buffer,
-            X_Dst       => Ray.Col,
-            Y_Dst       => 0,
+            Src_Pt      => (0, 0),
+            Dst_Buffer  => Bitmap_Buffer'Class (Buffer),
+            Dst_Pt      => (Ray.Col, 0),
             Width       => 1,
             Height      => LCD_H,
             Synchronous => False,
-            Clean_Cache => False);
+            Clean_Cache => True);
       else
-         for J in 0 .. LCD_H - 1 loop
-            Buffer.Set_Pixel (Ray.Col, J, Unsigned_32 (Cache.Column (J)));
+         for J in Cache.Column'Range loop
+            Buffer.Set_Pixel ((Ray.Col, J), UInt32 (Cache.Column (J)));
          end loop;
       end if;
    end Draw_Wall;
@@ -655,7 +637,7 @@ package body Renderer is
    ------------------
 
    procedure Draw_Sprites
-     (Buffer : Bitmap_Buffer'Class;
+     (Buffer : in out Bitmap_Buffer'Class;
       Rays   : Trace_Points)
    is
       Cache : Column_Info;
@@ -836,8 +818,12 @@ package body Renderer is
       end loop;
    end Draw_Sprites;
 
-   package body Tasks is separate;
+   ----------------
+   -- Draw_Frame --
+   ----------------
 
    procedure Draw_Frame renames Tasks.Draw;
+
+   package body Tasks is separate;
 
 end Renderer;

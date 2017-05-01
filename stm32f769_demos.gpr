@@ -1,0 +1,36 @@
+aggregate project STM32F769_Demos is
+
+   type RTS_Profile_Type is ("ravenscar-sfp", "ravenscar-full");
+   RTS_Profile : RTS_Profile_Type := external ("RTS_Profile", "ravenscar-sfp");
+
+   type BUILD_TYPE is ("Debug", "Production");
+   Build : BUILD_Type := external ("PLATFORM_BUILD", "Debug");
+
+   for Target use "arm-eabi";
+   for Runtime ("Ada") use RTS_Profile & "-stm32f769disco";
+
+   for External ("RTS_Profile") use RTS_Profile;
+   for External ("PLATFORM_BUILD") use Build;
+
+   for Project_Files use
+     ("balls/balls_stm32f769disco.gpr",
+      "conway/conway_stm32f769disco.gpr",
+      "fractals/fractals_stm32f769disco.gpr",
+      "sdcard/sdcard_stm32f769disco.gpr",
+      "wav_player/wav_stm32f769disco.gpr",
+      "wolf/wolf_stm32f769disco.gpr");
+
+   case RTS_Profile is
+      when "ravenscar-full" =>
+         for Project_Files use Project'Project_Files &
+            ("2048/demo_2048_stm32f769disco.gpr");
+      when others =>
+   end case;
+
+   package Ide is
+      for Program_Host use "localhost:4242";
+      for Communication_Protocol use "remote";
+      for Connection_Tool use "st-util";
+   end Ide;
+
+end STM32F769_Demos;

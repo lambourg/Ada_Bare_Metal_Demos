@@ -21,8 +21,6 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Interfaces;                 use Interfaces;
-
 with Ada.Real_Time;
 with Ada.Text_IO;                use Ada.Text_IO;
 
@@ -32,8 +30,10 @@ with Filesystem.FAT;             use Filesystem.FAT;
 with Filesystem.VFS;             use Filesystem.VFS;
 
 with HAL;                        use HAL;
-with HAL.Block_Drivers;
+--  with HAL.Block_Drivers;
+with HAL.SDMMC;                  use HAL.SDMMC;
 with SDMMC_Init;                 use SDMMC_Init;
+with Rpi_Board;                  use Rpi_Board;
 with RPi.SDMMC;                  use RPi.SDMMC;
 
 with SDCard_Buf;
@@ -49,7 +49,7 @@ is
    procedure Disp_CSD (CSD : Card_Specific_Data_Register);
    procedure Disp_SCR (SCR : SDCard_Configuration_Register);
    procedure Do_Speed;
-   procedure Do_Read (Blk : Unsigned_64);
+   procedure Do_Read (Blk : UInt64);
    procedure Do_List;
    procedure Do_Info;
    procedure Do_Mbr;
@@ -101,7 +101,7 @@ is
    is
       Units : constant array (Natural range <>) of Character :=
         (' ', 'k', 'M', 'G', 'T');
-      Capacity      : Unsigned_64;
+      Capacity      : UInt64;
    begin
       --  Dump general info about the SD-card
       Capacity := SD_Card_Info.Card_Capacity;
@@ -183,7 +183,7 @@ is
    procedure Disp_CSD (CSD : Card_Specific_Data_Register) is
    begin
       Put ("CSD structure V");
-      Put (Byte'Image (CSD.CSD_Structure + 1));
+      Put (UInt8'Image (CSD.CSD_Structure + 1));
       New_Line;
       Put (" Tran_Speed: ");
       case Shift_Right (CSD.Max_Data_Transfer_Rate, 3) and 15 is
@@ -227,7 +227,7 @@ is
    procedure Disp_SCR (SCR : SDCard_Configuration_Register) is
    begin
       Put ("SCR structure #");
-      Put (Byte'Image (SCR.SCR_Structure));
+      Put (UInt8'Image (SCR.SCR_Structure));
       Put (", Spec: ");
       case SCR.SD_Spec is
          when 0 => Put ("V1.0");
@@ -251,9 +251,9 @@ is
       end case;
       New_Line;
       Put (" Data_Stat_afer_erase:");
-      Put (Byte'Image (SCR.Data_Stat_After_Erase));
+      Put (UInt8'Image (SCR.Data_Stat_After_Erase));
       Put (", SD_Security:");
-      Put (Byte'Image (SCR.SD_Security));
+      Put (UInt8'Image (SCR.SD_Security));
       New_Line;
       Put (" Bus width:");
       if (SCR.SD_Bus_Widths and 1) /= 0 then
@@ -266,9 +266,9 @@ is
          Put (" ??");
       end if;
       Put (", EX_Security:");
-      Put (Byte'Image (SCR.Ex_Security));
+      Put (UInt8'Image (SCR.Ex_Security));
       Put (", CMD_Support:");
-      Put (Byte'Image (SCR.CMD_Support));
+      Put (UInt8'Image (SCR.CMD_Support));
       New_Line;
    end Disp_SCR;
 
@@ -279,7 +279,12 @@ is
    function Setup return Boolean is
       SD_Status     : SD_Error;
    begin
-      Initialize (EMMC_Driver, SD_Card_Info, SD_Status);
+      Initialize
+        (EMMC_Driver,
+         Rpi_Board.Get_EMMC_Clock,
+         SD_Card_Info,
+         SD_Status);
+
       if SD_Status /= OK then
          Put_Line ("Card initialization failed");
          return False;
@@ -347,12 +352,14 @@ is
    -- Do_Speed --
    --------------
 
-   procedure Do_Speed is
+   procedure Do_Speed
+   is
       use Ada.Real_Time;
       Start, Stop : Time;
-      Elaps : Time_Span;
-      Blk : Unsigned_64;
-      Us : Natural;
+      Elaps       : Time_Span;
+      Blk         : UInt64;
+      Us          : Natural;
+
    begin
       if not Setup then
          return;
@@ -382,7 +389,7 @@ is
    -- Do_Read --
    -------------
 
-   procedure Do_Read (Blk : Unsigned_64)
+   procedure Do_Read (Blk : UInt64)
    is
    begin
       if not Setup then
@@ -399,10 +406,10 @@ is
       begin
          Idx := 0;
          while Idx < 512 loop
-            Put (Hex8 (Unsigned_32 (Idx)));
+            Put (Hex8 (UInt32 (Idx)));
             Put (": ");
             for I in Natural range 0 .. 15 loop
-               Put (Hex2 (Unsigned_8 (SDCard_Buf.Data (Idx + I))));
+               Put (Hex2 (SDCard_Buf.Data (Idx + I)));
                if I = 7 then
                   Put ('-');
                else
@@ -433,7 +440,8 @@ is
    -- Do_Mbr --
    ------------
 
-   procedure Do_Mbr is
+   procedure Do_Mbr
+   is
       MBR : Master_Boot_Record;
    begin
       if not Setup then
@@ -447,13 +455,13 @@ is
 
       for I in Partition_Number loop
          if Valid (MBR, I) then
-            Put (Hex2 (Unsigned_8 (I)));
+            Put (Hex2 (UInt8 (I)));
             Put (": type=");
-            Put (Hex2 (Unsigned_8 (Get_Type (MBR, I))));
+            Put (Hex2 (UInt8 (Get_Type (MBR, I))));
             Put ("  LBA=");
-            Put (Hex16 (LBA (MBR, I)));
+            Put (Hex16 (UInt64 (LBA (MBR, I))));
             Put ("  Size=");
-            Put (Hex8 (Sectors (MBR, I)));
+            Put (Hex8 (UInt32 (Sectors (MBR, I))));
             New_Line;
          end if;
       end loop;
@@ -474,6 +482,12 @@ begin
       loop
          Put ("Your choice ? ");
          Get (C);
+         loop
+            --  At startup, the input buffer contains ASCII.NUL characters
+            exit when C /= ASCII.NUL;
+            Get (C);
+         end loop;
+
          Put (C);
          New_Line;
          case C is
@@ -506,7 +520,9 @@ begin
                end if;
                exit;
             when others =>
-               Put_Line ("Unknown choice");
+               Put ("Unknown choice: 0x");
+               Put (Hex2 (UInt8 (C'Enum_Rep)));
+               New_Line;
          end case;
       end loop;
    end loop;

@@ -4,9 +4,9 @@ with Images_Gen;
 package Hex_Images is
    --  Hex2
 
-   package Byte_Image_Pkg is new Images_Gen (2, Byte);
+   package Byte_Image_Pkg is new Images_Gen (2, UInt8);
 
-   function Hex2 (V : Byte) return Byte_Image_Pkg.Fixed_String
+   function Hex2 (V : UInt8) return Byte_Image_Pkg.Fixed_String
      renames Byte_Image_Pkg.Hex;
 
    --  Hex4

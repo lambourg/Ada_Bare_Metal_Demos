@@ -22,7 +22,6 @@
 ------------------------------------------------------------------------------
 
 with Ada.Unchecked_Conversion;
-with Interfaces;               use Interfaces;
 with HAL;                      use HAL;
 with System;                   use System;
 
@@ -153,7 +152,9 @@ package body Conway_Driver is
 
    G, G2, Tmp : Grid_Access;
 
-   Format : constant HAL.Framebuffer.FB_Color_Mode := RGB_565;
+   subtype Color_Mode is HAL.Framebuffer.FB_Color_Mode range ARGB_8888 .. AL_88;
+
+   Format : constant Color_Mode := RGB_565;
    Colors : constant array (Cell_State) of UInt32 :=
      (case Format is
          when ARGB_1555 => (Alive => 16#ffff#, Dead => 16#801f#),
@@ -175,13 +176,13 @@ package body Conway_Driver is
 
    procedure Draw_Grid
    is
-      Buffer : constant Bitmap_Buffer'Class :=
-                 Display.Get_Hidden_Buffer (1);
+      Buffer : constant Any_Bitmap_Buffer :=
+                 Display.Hidden_Buffer (1);
    begin
       for Y in Grid'Range loop
          for X in Line'Range loop
             Buffer.Set_Pixel
-              (Natural (X), Natural (Y),
+              ((Natural (X), Natural (Y)),
                Colors (G (Y) (X).State));
          end loop;
       end loop;
@@ -378,10 +379,10 @@ package body Conway_Driver is
          end loop;
       end Update_Neighbors;
 
-      function As_Byte is new Ada.Unchecked_Conversion (Cell, Byte);
+      function As_Byte is new Ada.Unchecked_Conversion (Cell, UInt8);
 
-      Buffer : constant Bitmap_Buffer'Class :=
-                 Display.Get_Hidden_Buffer (1);
+      Buffer : constant Any_Bitmap_Buffer :=
+                 Display.Hidden_Buffer (1);
    begin
       --
       --  For every cell in the Grid, we'll determine whether or not the
@@ -413,7 +414,7 @@ package body Conway_Driver is
                         G2 (Y) (X).State := Dead;
                         Update_Neighbors (X, Y, Dead);
                         Buffer.Set_Pixel
-                          (Natural (X), Natural (Y),
+                          ((Natural (X), Natural (Y)),
                            Colors (Dead));
                      end if;
 
@@ -422,7 +423,7 @@ package body Conway_Driver is
                         G2 (Y) (X).State := Alive;
                         Update_Neighbors (X, Y, Alive);
                         Buffer.Set_Pixel
-                          (Natural (X), Natural (Y),
+                          ((Natural (X), Natural (Y)),
                            Colors (Alive));
                      end if;
                end case;

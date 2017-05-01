@@ -44,7 +44,7 @@ package body Display is
    -- Flush_Cache --
    -----------------
 
-   procedure Flush_Cache (Buffer : HAL.Bitmap.Bitmap_Buffer'Class)
+   procedure Flush_Cache (Buffer : Bitmap.Bitmap_Buffer'Class)
    is
    begin
       Interfaces.Cache.Dcache_Flush_By_Range
@@ -56,7 +56,7 @@ package body Display is
    -----------------------
 
    function Get_Hidden_Buffer
-     (Layer : Positive) return HAL.Bitmap.Bitmap_Buffer'Class
+     (Layer : Positive) return RPi.Bitmap.RPi_Bitmap_Buffer
    is
       pragma Unreferenced (Layer);
    begin
