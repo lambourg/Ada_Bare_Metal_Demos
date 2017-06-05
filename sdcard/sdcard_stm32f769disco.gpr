@@ -12,6 +12,10 @@ project SDCard_STM32F769Disco extends "../common/common.gpr" is
       "../services/filesystem/**") &
      Common_STM32.Sources;
 
+   package Builder is
+      for Switches ("Ada") use ("-s");
+   end Builder;
+
    package Linker is
       for Default_Switches ("Ada") use
         ("-Wl,--defsym=__stack_size=32768",
