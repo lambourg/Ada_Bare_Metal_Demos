@@ -23,7 +23,7 @@
 
 with System;
 
-with HAL;                use HAL;
+with HAL;
 with HAL.Bitmap;
 with RPi.Bitmap;
 

@@ -31,9 +31,9 @@ with Last_Chance_Handler;  pragma Unreferenced (Last_Chance_Handler);
 --  must be somewhere in the closure of the context clauses.
 
 with System;
-with STM32.User_Button;     use STM32.User_Button;
 with STM32.Board;           use STM32.Board;
-with STM32.RNG.Interrupts;  use STM32.RNG.Interrupts;
+with STM32.User_Button;
+with STM32.RNG.Interrupts;
 
 with HAL;                   use HAL;
 with HAL.Bitmap;            use HAL.Bitmap;

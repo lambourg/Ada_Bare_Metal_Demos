@@ -88,7 +88,6 @@ package body Tasks is
                   Display.Get_Hidden_Buffer (1);
       Buf_2   : Bitmap.Bitmap_Buffer'Class :=
                  Display.Get_Hidden_Buffer (2);
-      use type System.Address;
 
    begin
       Trace_Rays (Visible, Tracers);

@@ -25,7 +25,7 @@ with System;
 with Ada.Unchecked_Conversion;
 
 with HAL;            use HAL;
-with STM32.SDRAM;    use STM32.SDRAM;
+with STM32.SDRAM;
 
 with Filesystem.VFS; use Filesystem, Filesystem.VFS;
 with Wav_Reader;     use Wav_Reader;

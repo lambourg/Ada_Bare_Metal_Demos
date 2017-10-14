@@ -26,7 +26,7 @@ with Ada.Text_IO;           use Ada.Text_IO;
 
 with RPi.Framebuffer;       use RPi.Framebuffer;
 
-with Playground;            use Playground;
+with Playground;
 with Rpi_Board;             use Rpi_Board;
 
 --  A simple raycasting demo
@@ -44,6 +44,7 @@ procedure Wolf_Demo
 is
 
 begin
+   Put_Line ("Setup display");
    Initialize (Display, Display_Width, Display_Height, 2);
    Put_Line ("Display initialized");
 

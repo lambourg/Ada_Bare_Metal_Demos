@@ -25,10 +25,10 @@ with Ada.Unchecked_Conversion;
 with HAL;                      use HAL;
 with System;                   use System;
 
-with STM32.User_Button;        use STM32.User_Button;
 with STM32.Board;              use STM32.Board;
 with STM32.RNG.Interrupts;     use STM32.RNG.Interrupts;
 with STM32.SDRAM;
+with STM32.User_Button;
 
 with HAL.Bitmap;               use HAL.Bitmap;
 with HAL.Framebuffer;          use HAL.Framebuffer;

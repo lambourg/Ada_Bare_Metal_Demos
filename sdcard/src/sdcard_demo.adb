@@ -30,7 +30,8 @@ with HAL.SDMMC;                  use HAL.SDMMC;
 
 with Bitmapped_Drawing;          use Bitmapped_Drawing;
 
-with Cortex_M.Cache;             use Cortex_M.Cache;
+with Cortex_M.Cache;
+
 with STM32.Board;                use STM32.Board;
 
 with BMP_Fonts;

@@ -21,8 +21,6 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with System;
-
 with HAL;                     use HAL;
 with HAL.Bitmap;              use HAL.Bitmap;
 with Bitmap_Color_Conversion; use Bitmap_Color_Conversion;
@@ -434,8 +432,6 @@ package body Renderer is
       Texture     : Textures.Texture_Column_Access;
       Margin      : Integer;
       Prev_Margin : Natural;
-
-      use type System.Address;
 
    begin
       if Ray.Tile = Empty then

@@ -1,6 +1,7 @@
-with STM32.Board;       use STM32.Board;
-with STM32.User_Button; use STM32.User_Button;
 with Cortex_M.FPU;      use Cortex_M.FPU;
+
+with STM32.Board;       use STM32.Board;
+with STM32.User_Button;
 
 with HAL.Framebuffer;
 with HAL.Bitmap;

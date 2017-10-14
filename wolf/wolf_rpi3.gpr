@@ -2,10 +2,20 @@ with "../drivers/boards/rpi3";
 
 project Wolf_RPi3 extends "wolf_common.gpr" is
 
+   type Yes_No_Type is ("yes", "no");
+   Use_Tasking : Yes_No_Type := external ("Use_Tasking", "yes");
+
    for Target use RPi3'Target;
    for Runtime ("Ada") use RPi3'Runtime ("Ada");
 
    for Source_Dirs use Project'Source_Dirs & ("src/rpi");
+   case Use_Tasking is
+      when "yes" =>
+         for Source_Dirs use project'Source_Dirs & ("src/rpi/tasking");
+      when "no" =>
+         for Source_Dirs use project'Source_Dirs & ("src/rpi/notasking");
+   end case;
+
    for Object_Dir use "obj/rpi3";
 
    for Main use ("wolf_demo.adb");
