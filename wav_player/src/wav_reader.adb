@@ -49,7 +49,6 @@ package body Wav_Reader is
       Buffer            : Block with Alignment => 32;
       Index             : Natural := Buffer'First;
       Index_Info        : Natural;
-      Num               : File_Size;
       Status            : Status_Code;
 
       -----------------
@@ -128,6 +127,12 @@ package body Wav_Reader is
                return Internal_Error;
             end if;
 
+            if Header.Size > Unsigned_32 (Info.Audio_Description'Size / 8) then
+               Status := Seek (F, Forward,
+                               File_Size (Header.Size) -
+                                 File_Size (Info.Audio_Description'Size / 8));
+            end if;
+
          elsif Header.ID = "LIST" then
             Index := Natural (Header.Size);
             Index_Info := 4; --  to account for the INFO ID after the header
@@ -191,8 +196,7 @@ package body Wav_Reader is
                elsif Header.ID = "IGNR" then
                   Read_String (Header, Info.Metadata.Genre);
                else
-                  Num := File_Size (Header.Size);
-                  Status := F.Read (Buffer'Address, Num);
+                  Status := F.Seek (Forward, File_Size (Header.Size));
 
                   if Status /= OK then
                      return Internal_Error;
@@ -201,12 +205,11 @@ package body Wav_Reader is
 
                --  Aligned on 16bit
                if Header.Size mod 2 = 1 then
-                  Num := 1;
-                  Status := Read (F, Buffer'Address, Num);
+                  Status := F.Seek (Forward, 1);
                   Index_Info := Index_Info + 1;
                end if;
 
-               exit when Index_Info = Index;
+               exit when Index_Info >= Index;
             end loop;
 
          elsif Header.ID = "data" then

@@ -205,7 +205,7 @@ package Filesystem is
    function Seek
      (File   : access File_Handle_Object;
       Origin : Seek_Mode;
-      Amount : in out File_Size) return Status_Code is abstract;
+      Amount : File_Size) return Status_Code is abstract;
 
    procedure Close (File : access File_Handle_Object) is abstract;
 

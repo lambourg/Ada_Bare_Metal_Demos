@@ -821,13 +821,12 @@ package body Filesystem.FAT is
    overriding function Seek
      (File   : access FAT_File_Handle;
       Origin : Seek_Mode;
-      Amount : in out File_Size) return Status_Code
+      Amount : File_Size) return Status_Code
    is
       Num : FAT_File_Size := FAT_File_Size (Amount);
       Ret : Status_Code;
    begin
       Ret := Files.Seek (File, Num, Origin);
-      Amount := File_Size (Num);
 
       return Ret;
    end Seek;

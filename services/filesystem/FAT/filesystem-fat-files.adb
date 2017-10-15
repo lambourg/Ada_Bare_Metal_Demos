@@ -601,10 +601,6 @@ package body Filesystem.FAT.Files is
 
       File.Bytes_Total := New_Pos;
 
-      if Ensure_Buffer (File) /= OK then
-         return Disk_Error;
-      end if;
-
       return OK;
    end Seek;
 

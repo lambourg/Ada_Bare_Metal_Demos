@@ -491,7 +491,7 @@ private
    overriding function Seek
      (File   : access FAT_File_Handle;
       Origin : Seek_Mode;
-      Amount : in out File_Size) return Status_Code;
+      Amount : File_Size) return Status_Code;
    --  Moves the current file position to "Amount", according to the Origin
    --  parameter. If the command makes the file pointer move outside of the
    --  file, it stops at the file boundary and returns the actual amount of
