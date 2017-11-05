@@ -32,7 +32,7 @@ with Ada.Real_Time;         use Ada.Real_Time;
 with Ada.Text_IO;
 
 with STM32.Board;           use STM32.Board;
-with STM32.SDRAM;           use STM32.SDRAM;
+with STM32.SDRAM;
 
 with HAL.Bitmap;            use HAL.Bitmap;
 with HAL.Framebuffer;
@@ -91,7 +91,6 @@ procedure Demo_2048 is
    end On_Slide;
 
    Status_Layer_Area : constant Rect := Game.Get_Status_Area;
-   use Gestures;
 
 begin
    Ada.Text_IO.Put_Line ("Ready");

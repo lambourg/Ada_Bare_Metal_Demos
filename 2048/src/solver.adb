@@ -543,7 +543,6 @@ package body Solver is
       Res         : Float;
       Tmp         : Board_T;
       N_CProb     : Float := CProb;
-      use type Ada.Containers.Count_Type;
 
    begin
       if CProb < CPROB_THRESH_BASE

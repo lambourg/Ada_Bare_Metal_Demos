@@ -27,10 +27,9 @@ with HAL;                  use HAL;
 with STM32.RNG;
 with STM32.Board;          use STM32.Board;
 with STM32.SDRAM;          use STM32.SDRAM;
-with Malloc;               use Malloc;
 with Gestures;             use Gestures;
 
-with Bitmapped_Drawing;     use Bitmapped_Drawing;
+with Bitmapped_Drawing;
 
 with STM32.DMA2D_Bitmap;   use STM32.DMA2D_Bitmap;
 
@@ -461,7 +460,7 @@ package body Game is
       Length      : Float;
       Is_Moving   : Boolean := False;
       Slide_Speed : constant Float :=
-                      Float (Background_Buffer.Width) * 8.0;
+                      Float (Background_Buffer.Width) * 4.0;
    begin
       Length := Slide_Speed * Float (To_Duration (Clock - Slide_Start_Time));
 
