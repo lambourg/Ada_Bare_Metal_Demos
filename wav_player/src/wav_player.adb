@@ -433,7 +433,7 @@ package body Wav_Player is
                Buffer_Scheduler.Next_Index (Idx, Len);
 
                --  Tell the user we're reading from the sdcard
-               STM32.Board.Turn_On (STM32.Board.Green_LED);
+               STM32.Board.Turn_On (STM32.Board.Green);
 
                --  Reading 16-bit data (note that we don't support 8-bit wav,
                --  as they're a bit obsolete).
@@ -446,7 +446,7 @@ package body Wav_Player is
                Cortex_M.Cache.Clean_DCache
                  (Buffer (Idx)'Address, Integer (Cnt));
                --  Done reading: turn off the led
-               STM32.Board.Turn_Off (STM32.Board.Green_LED);
+               STM32.Board.Turn_Off (STM32.Board.Green);
                --  Update the volume
                Set_Volume (Idx, Idx + Len - 1);
                --  Keep track of the total amount of audio data read

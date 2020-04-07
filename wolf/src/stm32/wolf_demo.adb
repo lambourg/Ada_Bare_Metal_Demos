@@ -37,7 +37,7 @@ procedure Wolf_Demo
 is
 begin
    STM32.SDRAM.Initialize;
-   Display.Initialize (HAL.Framebuffer.Landscape, HAL.Framebuffer.Polling);
+   Display.Initialize (HAL.Framebuffer.Landscape, HAL.Framebuffer.Interrupt);
    Display.Initialize_Layer
      (Layer  => 1,
       Mode   => Playground.Color_Mode);

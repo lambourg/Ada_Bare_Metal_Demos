@@ -1,7 +1,7 @@
 abstract project Common_STM32 is
 
-   type RTS_Type is ("ravenscar-sfp", "ravenscar-full");
-   RTS : RTS_Type := External ("RTS_Profile", "ravenscar-sfp");
+   type RTS_Profile is ("ravenscar-sfp", "ravenscar-full");
+   RTS : RTS_Profile := External ("RTS_Profile", "ravenscar-sfp");
 
    Sources := ();
 

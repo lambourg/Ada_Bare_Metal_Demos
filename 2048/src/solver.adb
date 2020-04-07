@@ -35,9 +35,6 @@ with Ada.Numerics.Elementary_Functions; use Ada.Numerics.Elementary_Functions;
 with HAL; use HAL;
 
 with Malloc;
-with Game;
-with Grid;
-with Status;
 
 with STM32.Board;
 
@@ -99,7 +96,6 @@ package body Solver is
    SCORE_MERGES_WEIGHT       : constant Float := 700.0;
    SCORE_EMPTY_WEIGHT        : constant Float := 270.0;
 
-   procedure Update_Progress;
    function Reverse_Row (Row : Row_T) return Row_T with Inline_Always;
    function Move_Up (Board : Board_T) return Board_T with Inline_Always;
    function Move_Down (Board : Board_T) return Board_T with Inline_Always;
@@ -151,20 +147,6 @@ package body Solver is
      (State : in out Eval_State; Board : Board_T; CProb : Float) return Float;
    function Score_Tilechoose_Node
      (State : in out Eval_State; Board : Board_T; CProb : Float) return Float;
-
-   ---------------------
-   -- Update_Progress --
-   ---------------------
-
-   procedure Update_Progress is
-      Pct : Float := 0.0;
-   begin
-      for J in G_Progress'Range loop
-         Pct := Pct + (0.25 ** Float (J + 1)) * Float (G_Progress (J));
-      end loop;
-
-      Status.Progress (Pct);
-   end Update_Progress;
 
    ----------
    -- Hash --
@@ -305,8 +287,6 @@ package body Solver is
       --  Precalculation of various results for every variations of a given
       --  row or column
       for Row in UInt16'Range loop
-         Status.Progress (Float (Row) / Float (UInt16'Last));
-
          declare
             Line               : Row_T := To_Row (Row);
             Rev_Row            : constant UInt16 :=
@@ -416,8 +396,6 @@ package body Solver is
             Col_Down_Table (Rev_Row)  := Unpack_Col (Rev_Result);
          end;
       end loop;
-
-      Status.Clear_Progress;
    end Init_Solver;
 
    -------------
@@ -573,12 +551,11 @@ package body Solver is
 
       for Col in Board_T'Range loop
          for Row in Row_T'Range loop
-            if not Solver_Enabled then
-               return 0.0;
-            end if;
+--              if not Solver_Enabled then
+--                 return 0.0;
+--              end if;
 
             if State.Cur_Depth = 0 and then State.Depth_Limit > 2 then
-               Update_Progress;
                G_Progress (2) := G_Progress (2) + 1;
             end if;
             if Board (Row) (Col) = 0 then
@@ -627,9 +604,9 @@ package body Solver is
       State.Cur_Depth := State.Cur_Depth + 1;
 
       for Move in Valid_Move_Type'Range loop
-         if not Solver_Enabled then
-            return 0.0;
-         end if;
+--           if not Solver_Enabled then
+--              return 0.0;
+--           end if;
 
          declare
             N_Board : constant Board_T := Execute_Move (Move, Board);
@@ -652,7 +629,7 @@ package body Solver is
    -- Next_Move --
    ---------------
 
-   function Next_Move return Move_Type is
+   function Next_Move (The_Grid : Grid.CGrid) return Move_Type is
       Ret     : Move_Type := None;
       Best    : Float := 0.0;
       Res     : Float;
@@ -664,7 +641,7 @@ package body Solver is
    begin
       for Row in 0 .. 3 loop
          for Col in reverse 0 .. 3 loop
-            Val := Grid.Get (Game.Grid, Grid.Size (Col), Grid.Size (Row));
+            Val := The_Grid.Get (Grid.Size (Col), Grid.Size (Row));
             if Val > Natural (Cell_T'Last) then
                Board (Row + 1) (Col + 1) := Cell_T'Last;
             else
@@ -681,12 +658,11 @@ package body Solver is
 
       State.Depth_Limit :=
         Integer'Max (2, 2 * Count_Distinct_Tiles (Board) / 3 - 2);
---          Integer'Max (2, Count_Distinct_Tiles (Board) / 2 - 1);
 
       G_Progress := (others => 0);
 
       for Move in Valid_Move_Type'Range loop
-         exit when not Solver_Enabled;
+--           exit when not Solver_Enabled;
 
          N_Board := Execute_Move (Move, Board);
 
@@ -706,13 +682,11 @@ package body Solver is
 
       State.Trans_Table.Clear;
 
-      Status.Clear_Progress;
-
-      if Solver_Enabled then
-         return Ret;
-      else
-         return None;
-      end if;
+--        if Solver_Enabled then
+      return Ret;
+--        else
+--           return None;
+--        end if;
    end Next_Move;
 
 end Solver;

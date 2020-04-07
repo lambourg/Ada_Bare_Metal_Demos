@@ -59,7 +59,7 @@ package body Tasks is
 
    procedure Copy_Sprites_Buffer
      (Cache  : Column_Info;
-      Buf    : in out HAL.Bitmap.Bitmap_Buffer'Class;
+      Buf    : HAL.Bitmap.Bitmap_Buffer'Class;
       X      : Natural;
       Y      : Natural;
       Height : Natural)
@@ -67,9 +67,11 @@ package body Tasks is
    begin
       Copy_Rect_Blend
         (Src_Buffer  => HAL.Bitmap.Bitmap_Buffer'Class (Cache.Col_Buffer),
-         Src_Pt      => (0, 0),
+         X_Src       => 0,
+         Y_Src       => 0,
          Dst_Buffer  => Buf,
-         Dst_Pt      => (X, Y),
+         X_Dst       => X,
+         Y_Dst       => Y,
          Width       => 1,
          Height      => Height,
          Synchronous => False,
@@ -84,9 +86,9 @@ package body Tasks is
    is
       Visible : Visible_Elements := (others => (others => False));
       Tmp     : constant Time := Clock;
-      Buf_1   : Bitmap.Bitmap_Buffer'Class :=
+      Buf_1   : Bitmap.Bitmap_Buffer'Class renames
                   Display.Get_Hidden_Buffer (1);
-      Buf_2   : Bitmap.Bitmap_Buffer'Class :=
+      Buf_2   : Bitmap.Bitmap_Buffer'Class renames
                  Display.Get_Hidden_Buffer (2);
 
    begin

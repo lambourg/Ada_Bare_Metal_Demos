@@ -21,12 +21,13 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
+with Interfaces;                 use Interfaces;
 with Ada.Unchecked_Conversion;
 
 with HAL;                        use HAL;
 with HAL.Bitmap;                 use HAL.Bitmap;
 with HAL.Framebuffer;            use HAL.Framebuffer;
-with HAL.SDMMC;                  use HAL.SDMMC;
+with SDMMC_Init;                 use SDMMC_Init;
 
 with Bitmapped_Drawing;          use Bitmapped_Drawing;
 
@@ -66,13 +67,13 @@ is
       Dir    : Directory_Handle;
       E      : Node_Access;
       Status : Status_Code;
-      Buffer : Bitmap_Buffer'Class := Display.DMA2D_Hidden_Buffer (1);
+      Buffer : Bitmap_Buffer'Class renames Display.Get_Hidden_Buffer (1);
    begin
       if Error_State then
          return;
       end if;
 
-      if Y > Display.Height then
+      if Y > Display.Get_Height then
          return;
       end if;
 
@@ -137,9 +138,9 @@ begin
 
    loop
       if not SDCard_Device.Card_Present then
-         Display.Hidden_Buffer (1).Fill (Transparent);
+         Display.Get_Hidden_Buffer (1).Fill (Transparent);
          Draw_String
-           (Display.Hidden_Buffer (1).all,
+           (Display.Get_Hidden_Buffer (1),
             (0, 0),
             "No SD-Card detected",
             BMP_Fonts.Font12x12,
@@ -154,7 +155,7 @@ begin
          end loop;
 
       else
-         Display.Hidden_Buffer (1).Fill (Transparent);
+         Display.Get_Hidden_Buffer (1).Fill (Transparent);
          Y := 0;
          Error_State := False;
 
@@ -166,7 +167,7 @@ begin
          for Unit of Units loop
             if Capacity < 1000 or else Unit = 'T' then
                Draw_String
-                 (Display.Hidden_Buffer (1).all,
+                 (Display.Get_Hidden_Buffer (1),
                   (0, Y),
                   "SDcard size:" & Capacity'Img & " " & Unit & "B",
                   BMP_Fonts.Font12x12,
@@ -221,7 +222,7 @@ begin
                   Img (Img'First .. Img'Last - 2) := Img (Img'First + 1 .. Img'Last - 1);
                   Img (Img'Last - 1) := '.';
                   Draw_String
-                    (Display.Hidden_Buffer (1).all,
+                    (Display.Get_Hidden_Buffer (1),
                      (0, Y),
                      "Read (in MB/s): " & Img,
                      BMP_Fonts.Font12x12,
@@ -229,7 +230,7 @@ begin
                      Transparent);
                else
                   Draw_String
-                    (Display.Hidden_Buffer (1).all,
+                    (Display.Get_Hidden_Buffer (1),
                      (0, Y),
                      "*** test failure ***",
                      BMP_Fonts.Font12x12,
@@ -247,7 +248,7 @@ begin
          if Status = No_MBR_Found then
             Error_State := True;
             Draw_String
-              (Display.Hidden_Buffer (1).all,
+              (Display.Get_Hidden_Buffer (1),
                (0, Y),
                "Not an MBR partition system: " & Status'Img,
                BMP_Fonts.Font12x12,
@@ -259,7 +260,7 @@ begin
          elsif Status = No_Filesystem then
             Error_State := True;
             Draw_String
-              (Display.Hidden_Buffer (1).all,
+              (Display.Get_Hidden_Buffer (1),
                (0, Y),
                "No valid partition found",
                BMP_Fonts.Font12x12,
@@ -271,7 +272,7 @@ begin
          elsif Status /= OK then
             Error_State := True;
             Draw_String
-              (Display.Hidden_Buffer (1).all,
+              (Display.Get_Hidden_Buffer (1),
                (0, Y),
                "Error when mounting the sdcard: " & Status'Img,
                BMP_Fonts.Font12x12,

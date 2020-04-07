@@ -31,12 +31,17 @@ with Last_Chance_Handler;  pragma Unreferenced (Last_Chance_Handler);
 --  must be somewhere in the closure of the context clauses.
 
 with System;
+with Interfaces;            use Interfaces;
+
+with Cortex_M.Cache;
 with STM32.Board;           use STM32.Board;
 with STM32.User_Button;
 with STM32.RNG.Interrupts;
 
 with HAL;                   use HAL;
 with HAL.Bitmap;            use HAL.Bitmap;
+
+with Bitmapped_Drawing;
 
 procedure Balls_Demo is
    use STM32;
@@ -344,6 +349,7 @@ procedure Balls_Demo is
    end Init_Balls;
 
 begin
+   Cortex_M.Cache.Disable_D_Cache;
    Display.Initialize;
    Display.Initialize_Layer (1, ARGB_1555);
    STM32.RNG.Interrupts.Initialize_RNG;
@@ -356,7 +362,7 @@ begin
          White_Background := not White_Background;
       end if;
 
-      Display.Hidden_Buffer (1).Fill
+      Display.Get_Hidden_Buffer (1).Fill
         ((if White_Background then White else Black));
 
       for M of Objects loop
@@ -394,13 +400,17 @@ begin
       end loop;
 
       for O of Objects loop
-         Display.Hidden_Buffer (1).Fill_Circle
-           (To_RGB (O.Col),
-            (X => I (O.Center (X)),
-             Y => I (O.Center (Y))),
-            O.R);
+         Bitmapped_Drawing.Fill_Circle
+           (Display.Get_Hidden_Buffer (1),
+            Center => (X => I (O.Center (X)),
+                       Y => I (O.Center (Y))),
+            Radius => O.R,
+            Hue    => To_RGB (O.Col));
       end loop;
 
+      Cortex_M.Cache.Clean_DCache
+        (Display.Get_Hidden_Buffer (1).Addr,
+         Display.Get_Hidden_Buffer (1).Buffer_Size);
       Display.Update_Layer (1);
    end loop;
 

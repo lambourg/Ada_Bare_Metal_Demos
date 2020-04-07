@@ -49,13 +49,13 @@ package Grid is
    function Get
      (G : in CGrid;
       X : Size;
-      Y : Size) return Integer;
+      Y : Size) return Integer with Inline;
 
    procedure Set
      (G     : in out CGrid;
       X     : Size;
       Y     : Size;
-      Value : Integer);
+      Value : Integer) with Inline;
 
    procedure Move
      (G         : in out CGrid;

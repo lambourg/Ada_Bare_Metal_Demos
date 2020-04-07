@@ -21,9 +21,11 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Ada.Unchecked_Conversion;
-with HAL;                      use HAL;
 with System;                   use System;
+with Interfaces;               use Interfaces;
+with Ada.Unchecked_Conversion;
+
+with HAL;                      use HAL;
 
 with STM32.Board;              use STM32.Board;
 with STM32.RNG.Interrupts;     use STM32.RNG.Interrupts;
@@ -176,13 +178,13 @@ package body Conway_Driver is
 
    procedure Draw_Grid
    is
-      Buffer : constant Any_Bitmap_Buffer :=
-                 Display.Hidden_Buffer (1);
+      Buffer : Bitmap_Buffer'Class renames Display.Get_Hidden_Buffer (1);
    begin
       for Y in Grid'Range loop
          for X in Line'Range loop
             Buffer.Set_Pixel
-              ((Natural (X), Natural (Y)),
+              (Natural (X),
+               Natural (Y),
                Colors (G (Y) (X).State));
          end loop;
       end loop;
@@ -381,8 +383,8 @@ package body Conway_Driver is
 
       function As_Byte is new Ada.Unchecked_Conversion (Cell, UInt8);
 
-      Buffer : constant Any_Bitmap_Buffer :=
-                 Display.Hidden_Buffer (1);
+      Buffer : Bitmap_Buffer'Class renames
+                 Display.Get_Hidden_Buffer (1);
    begin
       --
       --  For every cell in the Grid, we'll determine whether or not the
@@ -414,7 +416,8 @@ package body Conway_Driver is
                         G2 (Y) (X).State := Dead;
                         Update_Neighbors (X, Y, Dead);
                         Buffer.Set_Pixel
-                          ((Natural (X), Natural (Y)),
+                          (Natural (X),
+                           Natural (Y),
                            Colors (Dead));
                      end if;
 
@@ -423,7 +426,8 @@ package body Conway_Driver is
                         G2 (Y) (X).State := Alive;
                         Update_Neighbors (X, Y, Alive);
                         Buffer.Set_Pixel
-                          ((Natural (X), Natural (Y)),
+                          (Natural (X),
+                           Natural (Y),
                            Colors (Alive));
                      end if;
                end case;

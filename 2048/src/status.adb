@@ -28,17 +28,14 @@ with Bitmapped_Drawing;    use Bitmapped_Drawing;
 
 package body Status is
 
-   G_Pct       : Natural := 200;
    Null_Rect   : constant Rect :=
                    (Position => (0, 0), Width => 0, Height => 0);
    G_Area      : Rect := Null_Rect;
-   Prog_Area   : Rect := Null_Rect;
    Score_Area  : Rect := Null_Rect;
    High_Area   : Rect := Null_Rect;
    Btn_Area    : Rect := Null_Rect;
    Margin      : Natural := 5;
 
-   FG          : constant Bitmap_Color := (255, others => 80);
    Box_BG      : constant Bitmap_Color :=
                    (Alpha => 255,
                     Red   => 187,
@@ -53,11 +50,20 @@ package body Status is
 
    G_High_Score : Integer := -1;
 
+   type Autoplay_State is
+     (Disabled,
+      Off,
+      On);
+
+   G_Autoplay_State : Autoplay_State := Disabled;
+
+   procedure Update_Autoplay;
+
    procedure Draw_Button
      (Buffer  : in out Bitmap_Buffer'Class;
       Area    : Rect;
       Label   : String;
-      State   : Boolean;
+      State   : Autoplay_State;
       Rounded : Boolean);
 
    ---------------
@@ -66,8 +72,6 @@ package body Status is
 
    procedure Init_Area (Buffer : in out HAL.Bitmap.Bitmap_Buffer'Class)
    is
-      Small_Progress_Bar : Boolean := False;
-
    begin
       if G_Area /= Null_Rect then
          return;
@@ -79,13 +83,8 @@ package body Status is
          if G_Area.Height > 400 then
             --  STM32F469
             Margin := 9;
-            Prog_Area := (Position => (Margin + 2,
-                                       Margin + 2),
-                          Width    => G_Area.Width - 2 * Margin - 4,
-                          Height   => 8);
             Score_Area :=
-              (Position => (Margin,
-                            Prog_Area.Position.Y + Prog_Area.Height + Margin),
+              (Position => (Margin, Margin),
                Width    => G_Area.Width - 2 * Margin,
                Height   => 100);
             High_Area :=
@@ -103,13 +102,8 @@ package body Status is
                Height   => 60);
          else
             --  STM32F7
-            Prog_Area := (Position => (Margin + 2,
-                                       Margin + 2),
-                          Width    => G_Area.Width - 2 * Margin - 4,
-                          Height   => 4);
             Score_Area :=
-              (Position => (Margin,
-                            Prog_Area.Position.Y + Prog_Area.Height + Margin),
+              (Position => (Margin, Margin),
                Width    => G_Area.Width - 2 * Margin,
                Height   => 54);
             High_Area :=
@@ -129,13 +123,8 @@ package body Status is
       else
          --  STM32F429
          Margin := 2;
-         Prog_Area := (Position => (Margin, 1),
-                       Width    => G_Area.Width - 2 * Margin,
-                       Height   => 4);
-         Small_Progress_Bar := True;
          Score_Area :=
-           (Position => (Margin,
-                         Prog_Area.Position.Y + Prog_Area.Height + 2),
+           (Position => (Margin, 2),
             Width    => G_Area.Width / 2 - 2 * Margin,
             Height   => 40);
          High_Area :=
@@ -148,23 +137,6 @@ package body Status is
                          Score_Area.Position.Y + Score_Area.Height + Margin),
             Width    => G_Area.Width - 2 * Margin - 100,
             Height   => 29);
-      end if;
-
-      --  Setup the progress bar border: This is drawn in the background layer
-      --  so that we don't have to redraw it
-      if not Small_Progress_Bar then
-         Buffer.Fill_Rect
-           (Color => FG,
-            Area  => ((X      => G_Area.Position.X + Prog_Area.Position.X - 2,
-                       Y      => G_Area.Position.Y + Prog_Area.Position.Y - 2),
-                      Width  => Prog_Area.Width + 4,
-                      Height => Prog_Area.Height + 4));
-         Buffer.Fill_Rect
-           (Color => Transparent,
-            Area  => ((X      => G_Area.Position.X + Prog_Area.Position.X - 1,
-                       Y      => G_Area.Position.Y + Prog_Area.Position.Y - 1),
-                      Width  => Prog_Area.Width + 2,
-                      Height => Prog_Area.Height + 2));
       end if;
 
       --  Setup the Score area
@@ -237,7 +209,7 @@ package body Status is
      (Buffer  : in out Bitmap_Buffer'Class;
       Area    : Rect;
       Label   : String;
-      State   : Boolean;
+      State   : Autoplay_State;
       Rounded : Boolean)
    is
       FG     : Bitmap_Color;
@@ -248,19 +220,26 @@ package body Status is
       Shadow : Natural;
 
    begin
-      if State then
-         FG     := (255, 100, 100, 100);
-         BG     := (255, 160, 160, 160);
-         Top    := (255, 120, 120, 120);
-         Bottom := (255, 130, 130, 130);
-         Border := (255, 110, 110, 110);
-      else
-         FG     := (255, 160, 160, 160);
-         BG     := (255, 220, 220, 220);
-         Top    := (255, 250, 250, 250);
-         Bottom := (255, 200, 200, 200);
-         Border := (255, 150, 150, 150);
-      end if;
+      case State is
+         when Disabled =>
+            FG     := (255, 210, 210, 210);
+            BG     := (255, 220, 220, 220);
+            Top    := (255, 250, 250, 250);
+            Bottom := (255, 200, 200, 200);
+            Border := (255, 210, 210, 210);
+         when Off =>
+            FG     := (255, 160, 160, 160);
+            BG     := (255, 220, 220, 220);
+            Top    := (255, 250, 250, 250);
+            Bottom := (255, 200, 200, 200);
+            Border := (255, 150, 150, 150);
+         when On =>
+            FG     := (255, 100, 100, 100);
+            BG     := (255, 160, 160, 160);
+            Top    := (255, 120, 120, 120);
+            Bottom := (255, 130, 130, 130);
+            Border := (255, 110, 110, 110);
+      end case;
 
       if Area.Height > 50 then
          Shadow := 3;
@@ -336,6 +315,33 @@ package body Status is
          Fast       => False);
    end Draw_Button;
 
+   ---------------------
+   -- Update_Autoplay --
+   ---------------------
+
+   procedure Update_Autoplay is
+   begin
+      Draw_Button
+        (Display.Hidden_Buffer (2).all, Btn_Area,
+         "Auto Play", G_Autoplay_State, True);
+   end Update_Autoplay;
+
+   --------------------------
+   -- Set_Autoplay_Enabled --
+   --------------------------
+
+   procedure Set_Autoplay_Enabled (State : Boolean)
+   is
+   begin
+      if State then
+         G_Autoplay_State := Off;
+      else
+         G_Autoplay_State := Disabled;
+      end if;
+
+      Update_Autoplay;
+   end Set_Autoplay_Enabled;
+
    ------------------
    -- Set_Autoplay --
    ------------------
@@ -344,70 +350,18 @@ package body Status is
      (State : Boolean)
    is
    begin
-      if Btn_Area = Null_Rect then
+      if G_Autoplay_State = Disabled then
          return;
       end if;
 
-      Draw_Button
-        (Display.Hidden_Buffer (2).all, Btn_Area, "Auto Play", State, True);
+      if State then
+         G_Autoplay_State := On;
+      else
+         G_Autoplay_State := Off;
+      end if;
+
+      Update_Autoplay;
    end Set_Autoplay;
-
-   --------------
-   -- Progress --
-   --------------
-
-   procedure Progress (Pct : Float)
-   is
-      N_Pct  : constant Natural := Natural (Pct * 10.0) * 10;
-      Buffer : constant Any_Bitmap_Buffer :=
-                 Display.Hidden_Buffer (2);
-      Max_W  : Natural;
-      W      : Natural;
-
-   begin
-      if N_Pct = G_Pct then
-         return;
-      end if;
-
-      Max_W := Prog_Area.Width;
-      W     := Natural (Float (Max_W) * Pct);
-
-      if W > 0 then
-         Buffer.Fill_Rect
-           (Color => FG,
-            Area  => ((X      => Prog_Area.Position.X,
-                       Y      => Prog_Area.Position.Y),
-                      Width  => W,
-                      Height => Prog_Area.Height));
-      end if;
-
-      G_Pct := N_Pct;
-
-      Display.Update_Layer (2);
-   end Progress;
-
-   --------------------
-   -- Clear_Progress --
-   --------------------
-
-   procedure Clear_Progress
-   is
-      Buffer : constant Any_Bitmap_Buffer :=
-                 Display.Hidden_Buffer (2);
-   begin
-      if G_Pct = 0 then
-         return;
-      end if;
-
-      G_Pct := 0;
-      Buffer.Fill_Rect
-        (Color => Transparent,
-         Area  => ((X      => Prog_Area.Position.X,
-                    Y      => Prog_Area.Position.Y),
-                   Width  => Prog_Area.Width,
-                   Height => Prog_Area.Height));
-      Display.Update_Layer (2, True);
-   end Clear_Progress;
 
    ---------------
    -- Set_Score --
@@ -417,8 +371,7 @@ package body Status is
    is
       Img         : constant String := Score'Img;
       Area, AreaH : Rect;
-      Buf1        : constant Any_Bitmap_Buffer :=
-                      Display.Hidden_Buffer (2);
+      Buf1        : constant Any_Bitmap_Buffer := Display.Hidden_Buffer (2);
 
    begin
       Area.Position := (Score_Area.Position.X + 10,

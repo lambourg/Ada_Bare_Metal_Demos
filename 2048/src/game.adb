@@ -31,8 +31,6 @@ with Gestures;             use Gestures;
 
 with Bitmapped_Drawing;
 
-with STM32.DMA2D_Bitmap;   use STM32.DMA2D_Bitmap;
-
 package body Game is
 
    Background_Buffer       : DMA2D_Bitmap_Buffer;
@@ -47,20 +45,20 @@ package body Game is
    procedure Draw_Cell
      (Coord : Point;
       Value : Integer;
-      Dst   : in out Bitmap_Buffer'Class);
+      Dst   : in out DMA2D_Bitmap_Buffer);
 
    function Cell_To_Coordinate (X : Size; Y : Size) return Point;
 
-   procedure Draw_Background (Dst : in out Bitmap_Buffer'Class);
+   procedure Draw_Background (Dst : in out DMA2D_Bitmap_Buffer);
 
    procedure Draw_Grid_To_Grid
      (Src : Bitmap_Buffer'Class;
-      Dst : in out Bitmap_Buffer'Class);
+      Dst : in out DMA2D_Bitmap_Buffer);
 
    procedure Draw_Cell_Background
      (X, Y   : Integer;
       Color  : Bitmap_Color;
-      Buffer : in out Bitmap_Buffer'Class;
+      Buffer : in out DMA2D_Bitmap_Buffer;
       Border : Boolean);
 
    ---------------
@@ -144,7 +142,7 @@ package body Game is
    procedure Draw_Cell_Background
      (X, Y   : Integer;
       Color  : Bitmap_Color;
-      Buffer : in out Bitmap_Buffer'Class;
+      Buffer : in out DMA2D_Bitmap_Buffer;
       Border : Boolean)
    is
       Radius : constant Natural := Cell_Size / 10;
@@ -223,7 +221,6 @@ package body Game is
       for I in Colors'Range loop
          Draw_Cell_Background
            (0, I * Cell_Size, Colors (I), Cells_Buffer, True);
-         Invalidate_DCache (Cells_Buffer.Addr, Cells_Buffer.Buffer_Size);
 
          Num := 2 ** (I + 1);
          declare
@@ -251,7 +248,8 @@ package body Game is
                Outline    => True,
                Foreground => Fg,
                Fast       => False);
-            Clean_DCache (Cells_Buffer.Addr, Cells_Buffer.Buffer_Size);
+            Clean_Invalidate_DCache
+              (Cells_Buffer.Addr, Cells_Buffer.Buffer_Size);
          end;
       end loop;
    end Init_Cells_Buffer;
@@ -262,7 +260,7 @@ package body Game is
 
    procedure Draw_Grid_To_Grid
      (Src : Bitmap_Buffer'Class;
-      Dst : in out Bitmap_Buffer'Class) is
+      Dst : in out DMA2D_Bitmap_Buffer) is
    begin
       Copy_Rect
         (Src_Buffer  => Src,
@@ -271,14 +269,15 @@ package body Game is
          Dst_Pt      => (0, Dst.Height - Background_Buffer.Height),
          Width       => Src.Width,
          Height      => Src.Height,
-         Synchronous => False);
+         Synchronous => False,
+         Clean_Cache => False);
    end Draw_Grid_To_Grid;
 
    ---------------------
    -- Draw_Background --
    ---------------------
 
-   procedure Draw_Background (Dst : in out Bitmap_Buffer'Class) is
+   procedure Draw_Background (Dst : in out DMA2D_Bitmap_Buffer) is
    begin
       Draw_Grid_To_Grid (Background_Buffer, Dst);
    end Draw_Background;
@@ -300,7 +299,7 @@ package body Game is
    procedure Draw_Cell
      (Coord : Point;
       Value : Integer;
-      Dst   : in out Bitmap_Buffer'Class)
+      Dst   : in out DMA2D_Bitmap_Buffer)
    is
    begin
       Copy_Rect_Blend
@@ -310,17 +309,20 @@ package body Game is
          Dst_Pt      => (Coord.X, Coord.Y),
          Width       => Cell_Size,
          Height      => Cell_Size,
-         Synchronous => False);
+         Synchronous => False,
+         Clean_Cache => False);
    end Draw_Cell;
 
    ----------
    -- Draw --
    ----------
 
-   procedure Draw (Dst : in out Bitmap_Buffer'Class) is
+   procedure Draw (Dst : in out DMA2D_Bitmap_Buffer) is
       Value : Integer := 0;
    begin
+      Cortex_M.Cache.Clean_Invalidate_DCache (Dst.Addr, Dst.Buffer_Size);
       Draw_Background (Dst);
+
       for Y in Standard.Grid.Size loop
          for X in Standard.Grid.Size loop
             Value := Grid.Get (X, Y);
@@ -334,8 +336,6 @@ package body Game is
             end if;
          end loop;
       end loop;
---
---        Invalidate_DCache (Dst.Addr, Dst.Buffer_Size);
    end Draw;
 
    -----------
@@ -455,19 +455,22 @@ package body Game is
    -- Slide --
    -----------
 
-   function Slide (Dst : in out Bitmap_Buffer'Class) return Boolean
+   function Slide (Dst : in out DMA2D_Bitmap_Buffer) return Boolean
    is
-      Length      : Float;
+      Length      : Integer;
       Is_Moving   : Boolean := False;
       Slide_Speed : constant Float :=
                       Float (Background_Buffer.Width) * 4.0;
+      BG_Changed  : Boolean := False;
    begin
-      Length := Slide_Speed * Float (To_Duration (Clock - Slide_Start_Time));
+      Length :=
+        Integer (Slide_Speed * Float (To_Duration (Clock - Slide_Start_Time)));
 
       for Cell of Moving_Cells loop
          if Cell.Moving then
-            if Integer (Length) >= Cell.Max_Length then
+            if Length >= Cell.Max_Length then
                Cell.Moving := False;
+               BG_Changed  := True;
                Draw_Cell (Coord => (Cell.Dst.X, Cell.Dst.Y - Up_Margin),
                           Value => Cell.Dst_Value,
                           Dst   => Background_Slide_Buffer);
@@ -475,13 +478,18 @@ package body Game is
          end if;
       end loop;
 
+      if BG_Changed then
+         Background_Slide_Buffer.Sync;
+      end if;
+
+      Cortex_M.Cache.Clean_Invalidate_DCache (Dst.Addr, Dst.Buffer_Size);
       Draw_Grid_To_Grid (Background_Slide_Buffer, Dst);
 
       for Cell of Moving_Cells loop
          if Cell.Moving then
             Is_Moving := True;
-            Draw_Cell (Coord => (Cell.Src.X + Integer (Length) * Cell.V.X,
-                                 Cell.Src.Y + Integer (Length) * Cell.V.Y),
+            Draw_Cell (Coord => (Cell.Src.X + Length * Cell.V.X,
+                                 Cell.Src.Y + Length * Cell.V.Y),
                        Value => Cell.Src_Value,
                        Dst   => Dst);
          end if;
@@ -514,6 +522,7 @@ package body Game is
    begin
       Trace := Move (Grid, Direction);
       Init_Slide (Previous_Grid, Trace);
+      Add_Value;
    end Move;
 
    ----------------

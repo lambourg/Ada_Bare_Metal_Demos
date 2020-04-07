@@ -21,9 +21,11 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
+with Interfaces;              use Interfaces;
+
 with HAL;                     use HAL;
 with HAL.Bitmap;              use HAL.Bitmap;
-with Bitmap_Color_Conversion; use Bitmap_Color_Conversion;
+with Cortex_M.Cache;
 
 with Bitmap;
 with Display;                 use Display;
@@ -152,14 +154,14 @@ package body Renderer is
 
    procedure Draw_Wall
      (Ray    : Trace_Point;
-      Buffer : in out Bitmap.Bitmap_Buffer'Class;
+      Buffer : HAL.Bitmap.Bitmap_Buffer'Class;
       Cache  : in out Column_Info);
 
    procedure Sort_Sprites
      (Visible_Tiles : Visible_Elements);
 
    procedure Draw_Sprites
-     (Buffer : in out Bitmap_Buffer'Class;
+     (Buffer : Bitmap_Buffer'Class;
       Rays   : Trace_Points);
 
    package Tasks is
@@ -168,7 +170,7 @@ package body Renderer is
 
       procedure Copy_Sprites_Buffer
         (Cache  : Column_Info;
-         Buf    : in out HAL.Bitmap.Bitmap_Buffer'Class;
+         Buf    : HAL.Bitmap.Bitmap_Buffer'Class;
          X      : Natural;
          Y      : Natural;
          Height : Natural);
@@ -422,7 +424,7 @@ package body Renderer is
 
    procedure Draw_Wall
      (Ray    : Trace_Point;
-      Buffer : in out Bitmap.Bitmap_Buffer'Class;
+      Buffer : HAL.Bitmap.Bitmap_Buffer'Class;
       Cache  : in out Column_Info)
    is
       X, Y    : Natural;
@@ -452,9 +454,11 @@ package body Renderer is
       then
          Copy_Rect
            (Src_Buffer  => Buffer,
-            Src_Pt      => (Cache.Prev_Col, 0),
-            Dst_Buffer  => Bitmap_Buffer'Class (Buffer),
-            Dst_Pt      => (Ray.Col, 0),
+            X_Src       => Cache.Prev_Col,
+            Y_Src       => 0,
+            Dst_Buffer  => Buffer,
+            X_Dst       => Ray.Col,
+            Y_Dst       => 0,
             Width       => 1,
             Height      => LCD_H,
             Synchronous => False,
@@ -506,6 +510,7 @@ package body Renderer is
                   Cache.Column (Margin + Row) := Color;
                end loop;
             end;
+
          else
             --  Expanding case
             declare
@@ -551,18 +556,22 @@ package body Renderer is
       Cache.Prev_Height := S.Height;
 
       if Display.Use_Column_Cache then
+         Cortex_M.Cache.Clean_DCache
+           (Cache.Col_Buffer.Addr, Cache.Col_Buffer.Buffer_Size);
          Copy_Rect
            (Src_Buffer  => Cache.Col_Buffer,
-            Src_Pt      => (0, 0),
-            Dst_Buffer  => Bitmap_Buffer'Class (Buffer),
-            Dst_Pt      => (Ray.Col, 0),
+            X_Src       => 0,
+            Y_Src       => 0,
+            Dst_Buffer  => Buffer,
+            X_Dst       => Ray.Col,
+            Y_Dst       => 0,
             Width       => 1,
             Height      => LCD_H,
             Synchronous => False,
-            Clean_Cache => True);
+            Clean_Cache => False);
       else
          for J in Cache.Column'Range loop
-            Buffer.Set_Pixel ((Ray.Col, J), UInt32 (Cache.Column (J)));
+            Buffer.Set_Pixel (Ray.Col, J, UInt32 (Cache.Column (J)));
          end loop;
       end if;
    end Draw_Wall;
@@ -633,7 +642,7 @@ package body Renderer is
    ------------------
 
    procedure Draw_Sprites
-     (Buffer : in out Bitmap_Buffer'Class;
+     (Buffer : Bitmap_Buffer'Class;
       Rays   : Trace_Points)
    is
       Cache : Column_Info;

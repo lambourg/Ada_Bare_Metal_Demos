@@ -21,7 +21,7 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
---  with System;
+with System;
 with Ada.Real_Time;   use Ada.Real_Time;
 
 with STM32.Board;     use STM32.Board;
@@ -37,7 +37,7 @@ package body Gestures is
    -----------------------
 
    protected Interrupt_Handler is
-      pragma Interrupt_Priority;
+      pragma Interrupt_Priority (System.Interrupt_Priority'First);
 
       entry Wait_Data;
 
@@ -52,8 +52,9 @@ package body Gestures is
    -- Touch_Task --
    ----------------
 
-   task Touch_Task;
---       with Priority => System.Priority'Last;
+   task Touch_Task is
+      pragma Priority (System.Priority'Last);
+   end Touch_Task;
 
    -----------------------
    -- Interrupt_Handler --
@@ -77,6 +78,7 @@ package body Gestures is
       procedure Interrupt_Handler
       is
       begin
+         --  STM32.Board.Touch_Panel.Enable_Interrupts (False);
          Clear_External_Interrupt (TP_INT.Interrupt_Line_Number);
          New_Data := True;
       end Interrupt_Handler;
@@ -222,6 +224,8 @@ package body Gestures is
                Last_Id     := No_Gesture;
             end if;
          end;
+
+         STM32.Board.Touch_Panel.Enable_Interrupts (True);
       end loop;
    end Touch_Task;
 
@@ -233,6 +237,7 @@ package body Gestures is
    is
    begin
       Callback := CB;
+      STM32.Board.Touch_Panel.Enable_Interrupts (True);
    end Initialize;
 
 end Gestures;

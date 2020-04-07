@@ -1,4 +1,4 @@
-with "../drivers/boards/config";
+with "../drivers/hal/config";
 
 project Common is
 
@@ -18,7 +18,7 @@ project Common is
    end Linker;
 
    package Ide is
-      for Program_Host use "localhost:4242";
+      for Program_Host use "10.211.55.13:4242";
       for Communication_Protocol use "remote";
       for Connection_Tool use "st-util"; --  ??? Not true anymore.
    end Ide;

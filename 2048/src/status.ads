@@ -27,16 +27,14 @@ package Status is
 
    procedure Init_Area (Buffer : in out HAL.Bitmap.Bitmap_Buffer'Class);
 
-   procedure Progress (Pct : Float);
-   procedure Clear_Progress;
-
    procedure Set_Score
      (Score : Natural);
 
    function Has_Buttons return Boolean;
 
-   procedure Set_Autoplay
-     (State : Boolean);
+   procedure Set_Autoplay_Enabled (State : Boolean);
+
+   procedure Set_Autoplay (State : Boolean);
 
    function Get_Autoplay_Btn_Area return Rect;
 

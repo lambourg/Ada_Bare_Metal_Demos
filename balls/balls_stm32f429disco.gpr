@@ -1,9 +1,9 @@
-with "../drivers/boards/stm32f429_discovery.gpr";
+with "../drivers/boards/stm32f429disco.gpr";
 with "../common/common_stm32";
 
 project Balls_STM32F429Disco extends "../common/common.gpr" is
 
-   for Runtime ("Ada") use STM32F429_Discovery'Runtime("Ada");
+   for Runtime ("Ada") use STM32F429Disco'Runtime("Ada");
    for Object_Dir use "obj/stm32f429disco";
 
    for Main use ("balls_demo.adb");

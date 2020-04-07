@@ -32,6 +32,7 @@ with Ada.Real_Time;         use Ada.Real_Time;
 with Ada.Text_IO;
 
 with STM32.Board;           use STM32.Board;
+with STM32.DMA2D_Bitmap;    use STM32.DMA2D_Bitmap;
 with STM32.SDRAM;
 
 with HAL.Bitmap;            use HAL.Bitmap;
@@ -40,18 +41,14 @@ with HAL.Framebuffer;
 with Framebuffer_Helper;    use Framebuffer_Helper;
 
 with Gestures;
+with Tasking;
 
 with Game;
-with Grid;
 with Solver;
 with Status;
 
-procedure Demo_2048 is
-   Period           : constant Time_Span := Milliseconds (10);
-   Do_Gesture       : Boolean := False;
-   Do_Toggle_Solver : Boolean := False;
-   Gesture          : Gestures.Gesture_Data;
-
+procedure Demo_2048
+is
    procedure On_Autoplay_Clicked;
    procedure On_Slide (New_Gesture : Gestures.Gesture_Data);
 
@@ -62,8 +59,7 @@ procedure Demo_2048 is
    procedure On_Autoplay_Clicked
    is
    begin
-      Solver.Solver_Enabled := not Solver.Solver_Enabled;
-      Do_Toggle_Solver := True;
+      Tasking.Solver_Toggled;
    end On_Autoplay_Clicked;
 
    --------------
@@ -85,12 +81,12 @@ procedure Demo_2048 is
       then
          On_Autoplay_Clicked;
       elsif not Game.Is_Sliding then
-         Gesture := New_Gesture;
-         Do_Gesture := True;
+         Tasking.Handle_Gesture (New_Gesture);
       end if;
    end On_Slide;
 
    Status_Layer_Area : constant Rect := Game.Get_Status_Area;
+   Buffer            : DMA2D_Bitmap_Buffer;
 
 begin
    Ada.Text_IO.Put_Line ("Ready");
@@ -112,14 +108,13 @@ begin
    Game.Init;
    Game.Start;
 
-   Game.Draw (Display.Hidden_Buffer (1).all);
-   Status.Init_Area (Display.Hidden_Buffer (1).all);
+   Buffer := Display.DMA2D_Hidden_Buffer (1);
+   Game.Draw (Buffer);
+   Status.Init_Area (Buffer);
 
    Status.Set_Score (0);
 
-   if Status.Has_Buttons then
-      Status.Set_Autoplay (Solver.Solver_Enabled);
-   end if;
+   Status.Set_Autoplay_Enabled (False);
 
    Update_All_Layers;
 
@@ -127,70 +122,13 @@ begin
 
    Solver.Init_Solver;
 
+   Status.Set_Autoplay_Enabled (True);
+
+   Update_All_Layers;
+
    STM32.Board.Turn_Off (STM32.Board.Green_LED);
 
    loop
-      if Game.Is_Sliding then
-         while Game.Is_Sliding loop
-            if not Game.Slide (Display.Hidden_Buffer (1).all) then
-               Game.Add_Value;
-               Game.Draw (Display.Hidden_Buffer (1).all);
-
-               Status.Set_Score (Game.Grid.Score);
-               Update_All_Layers;
-            else
-               Display.Update_Layer (1, False);
-            end if;
-         end loop;
-      end if;
-
---        if STM32.User_Button.Has_Been_Pressed then
---           On_Autoplay_Clicked;
---        end if;
-
-      if Do_Toggle_Solver then
-         Status.Set_Autoplay (Solver.Solver_Enabled);
-         Display.Update_Layer (2, True);
-
-         if Solver.Solver_Enabled then
-            Turn_On (STM32.Board.Green_LED);
-         else
-            Turn_Off (STM32.Board.Green_LED);
-         end if;
-
-         Do_Toggle_Solver := False;
-      end if;
-
-      if Solver.Solver_Enabled then
-         case Solver.Next_Move is
-            when Solver.Up =>
-               Game.Move (Direction => Grid.Up);
-            when Solver.Down =>
-               Game.Move (Direction => Grid.Down);
-            when Solver.Left =>
-               Game.Move (Direction => Grid.Left);
-            when Solver.Right =>
-               Game.Move (Direction => Grid.Right);
-            when Solver.None =>
-               --  Solver.None may arise in two different situations: either
-               --  because the solver has been interrupted, or because no more
-               --  move is possible (game over). So if the solver is still
-               --  enabled (e.g. has not been interrupted), we restart a new
-               --  game.
-               if Solver.Solver_Enabled then
-                  Game.Start;
-               end if;
-         end case;
-      end if;
-
-      if Do_Gesture then
-         if not Solver.Solver_Enabled then
-            Game.Treat_Touch (Gesture);
-         end if;
-
-         Do_Gesture := False;
-      end if;
-
-      delay until Clock + Period;
+      delay until Time_Last;
    end loop;
 end Demo_2048;

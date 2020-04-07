@@ -21,17 +21,15 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-pragma Restrictions (No_Streams);
+with Grid;
 
 package Solver is
-
-   Solver_Enabled : Boolean := False;
 
    type Move_Type is (Up, Down, Left, Right, None);
    subtype Valid_Move_Type is Move_Type range Up .. Right;
 
    procedure Init_Solver;
 
-   function Next_Move return Move_Type;
+   function Next_Move (The_Grid : Grid.CGrid) return Move_Type;
 
 end Solver;

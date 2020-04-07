@@ -22,6 +22,7 @@
 ------------------------------------------------------------------------------
 
 with HAL.Bitmap;            use HAL.Bitmap;
+with STM32.DMA2D_Bitmap;    use STM32.DMA2D_Bitmap;
 
 with Hershey_Fonts.FuturaL; use Hershey_Fonts;
 
@@ -42,9 +43,9 @@ package Game is
    function Get_Status_Area return Rect;
 
    procedure Init_Cells_Buffer;
-   procedure Draw (Dst : in out Bitmap_Buffer'Class);
+   procedure Draw (Dst : in out DMA2D_Bitmap_Buffer);
    procedure Init_Slide (Old_Grid : CGrid; Trace : Trace_Grid_T);
-   function Slide (Dst : in out Bitmap_Buffer'Class) return Boolean;
+   function Slide (Dst : in out DMA2D_Bitmap_Buffer) return Boolean;
    procedure Start;
    procedure Add_Value;
    function Can_Move (Direction : Direction_E) return Boolean;

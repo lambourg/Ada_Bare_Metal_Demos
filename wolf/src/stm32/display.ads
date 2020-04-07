@@ -69,9 +69,9 @@ private
 
    function Get_Color_Mode
      (Layer : Positive) return HAL.Framebuffer.FB_Color_Mode
-   is (STM32.Board.Display.Color_Mode (Layer));
+   is (STM32.Board.Display.Get_Color_Mode (Layer));
 
    function Is_Swapped return Boolean
-   is (STM32.Board.Display.Swapped);
+   is (STM32.Board.Display.Is_Swapped);
 
 end Display;

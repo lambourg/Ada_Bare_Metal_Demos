@@ -12,6 +12,11 @@ project WAV_STM32F746Disco extends "../common/common.gpr" is
       "../services/filesystem/**") &
      Common_STM32.Sources;
 
+   package Binder is
+      for Default_Switches ("Ada") use
+        ("-D8k");
+   end Binder;
+
    package Linker is
       for Default_Switches ("Ada") use
         ("-Wl,--defsym=__stack_size=32768",

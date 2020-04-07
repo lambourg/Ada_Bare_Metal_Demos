@@ -23,6 +23,7 @@
 
 with Cortex_M.Cache;
 with STM32.DMA2D;
+with STM32.DMA2D_Bitmap;
 
 package body Display is
 
@@ -30,7 +31,8 @@ package body Display is
      (Layer : Positive) return Bitmap.Bitmap_Buffer'Class
    is
    begin
-      return STM32.Board.Display.DMA2D_Hidden_Buffer (Layer);
+      return STM32.DMA2D_Bitmap.DMA2D_Bitmap_Buffer'Class
+        (STM32.Board.Display.Get_Hidden_Buffer (Layer));
    end Get_Hidden_Buffer;
 
    ------------------

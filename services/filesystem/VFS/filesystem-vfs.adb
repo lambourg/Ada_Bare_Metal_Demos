@@ -141,7 +141,8 @@ package body Filesystem.VFS is
    is
       MBR    : Master_Boot_Record;
       Status : Status_Code;
-      FAT_FS : access FAT_Filesystem;
+      FAT_FS : FAT_Filesystem_Access;
+
    begin
       Status := Read (Device, MBR);
 
@@ -158,7 +159,7 @@ package body Filesystem.VFS is
             Status := Open (Controller => Device,
                             LBA        => LBA (MBR, P),
                             FS         => FAT_FS);
-            return Mount_Volume (Mount_Point, FAT_FS);
+            return Mount_Volume (Mount_Point, Filesystem_Access (FAT_FS));
          end if;
       end loop;
 

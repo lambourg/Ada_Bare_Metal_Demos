@@ -1,10 +1,10 @@
-with "../drivers/boards/stm32f469_discovery.gpr";
+with "../drivers/boards/stm32f469disco.gpr";
 with "../common/common_stm32";
 
 project Conway_STM32F469Disco extends "../common/common.gpr" is
 
-   for Target use STM32F469_Discovery'Target;
-   for Runtime ("Ada") use STM32F469_Discovery'Runtime("Ada");
+   for Target use STM32F469Disco'Target;
+   for Runtime ("Ada") use STM32F469Disco'Runtime("Ada");
 
    for Object_Dir use "obj/stm32f469disco";
 

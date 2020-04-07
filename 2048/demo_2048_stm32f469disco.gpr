@@ -11,7 +11,7 @@ project Demo_2048_STM32F469Disco extends "../common/common.gpr" is
 
    package Linker is
       for Default_Switches ("Ada") use
-        ("-Wl,--defsym=__stack_size=65536",
+        ("-Wl,--defsym=__stack_size=32768",
          "-Wl,--gc-sections");
    end Linker;
 

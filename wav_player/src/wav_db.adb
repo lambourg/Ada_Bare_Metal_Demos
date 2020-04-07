@@ -22,6 +22,7 @@
 ------------------------------------------------------------------------------
 
 with System;
+with Interfaces;     use Interfaces;
 with Ada.Unchecked_Conversion;
 
 with HAL;            use HAL;

@@ -141,7 +141,7 @@ package body GUI is
 
    --  Selector primitives:
 
-   procedure Draw_Selector_Background (Buffer : Any_Bitmap_Buffer);
+   procedure Draw_Selector_Background (Buffer : Bitmap_Buffer'Class);
    function Wav_DB_Id
      (Id   : Selector_Id;
       Line : Natural) return Wav_DB.Id_Type;
@@ -161,17 +161,17 @@ package body GUI is
       Previous,
       Next);
 
-   procedure Draw_Play (Buffer : Any_Bitmap_Buffer;
+   procedure Draw_Play (Buffer : Bitmap_Buffer'Class;
                         Color  : HAL.Bitmap.Bitmap_Color);
-   procedure Draw_Pause (Buffer : Any_Bitmap_Buffer;
+   procedure Draw_Pause (Buffer : Bitmap_Buffer'Class;
                          Color  : HAL.Bitmap.Bitmap_Color);
-   procedure Draw_Next (Buffer : Any_Bitmap_Buffer;
+   procedure Draw_Next (Buffer : Bitmap_Buffer'Class;
                         Color  : HAL.Bitmap.Bitmap_Color);
-   procedure Draw_Prev (Buffer : Any_Bitmap_Buffer;
+   procedure Draw_Prev (Buffer : Bitmap_Buffer'Class;
                         Color  : HAL.Bitmap.Bitmap_Color);
 
    procedure Set_Controller_State
-     (Buffer   : Any_Bitmap_Buffer;
+     (Buffer   : Bitmap_Buffer'Class;
       Playing  : Boolean;
       Has_Next : Boolean;
       Has_Prev : Boolean);
@@ -252,16 +252,18 @@ package body GUI is
    is
       Y : constant := (TITLE_HEIGHT - 2 * SUBTITLE_FNT_H) / 2;
    begin
-      Display.Hidden_Buffer (1).Fill_Rect
+      Display.Get_Hidden_Buffer (1).Fill_Rect
         (Transparent,
-         ((TITLE_W, Y + (if Line = 2 then SUBTITLE_FNT_H else 0)),
-          Display.Width - TITLE_W, SUBTITLE_FNT_H),
-         Synchronous => True);
+         TITLE_W,
+         Y + (if Line = 2 then SUBTITLE_FNT_H else 0),
+         Display.Get_Width - TITLE_W,
+         SUBTITLE_FNT_H);
+      Display.Get_Hidden_Buffer (1).Wait_Transfer;
       Bitmapped_Drawing.Draw_String
-        (Buffer     => Display.Hidden_Buffer (1).all,
+        (Buffer     => Display.Get_Hidden_Buffer (1),
          Area       => ((TITLE_W,
                          Y + (if Line = 2 then SUBTITLE_FNT_H else 0)),
-                        Display.Width - TITLE_W,
+                        Display.Get_Width - TITLE_W,
                         SUBTITLE_FNT_H),
          Msg        => Msg,
          Font       => Font,
@@ -308,15 +310,15 @@ package body GUI is
    -- Draw_Selector --
    -------------------
 
-   procedure Draw_Selector_Background (Buffer : Any_Bitmap_Buffer)
+   procedure Draw_Selector_Background (Buffer : Bitmap_Buffer'Class)
    is
    begin
       Buffer.Fill_Rect
-        (White, ((0, SELECTOR_Y), LCD_W, SELECTOR_HEIGHT));
+        (White, 0, SELECTOR_Y, LCD_W, SELECTOR_HEIGHT);
       Buffer.Fill_Rect
-        (Steel_Blue, ((0, SELECTOR_Y + 1), LCD_W, SELECTOR_TITLE_H - 1));
+        (Steel_Blue, 0, SELECTOR_Y + 1, LCD_W, SELECTOR_TITLE_H - 1);
       Bitmapped_Drawing.Draw_String
-        (Buffer     => Buffer.all,
+        (Buffer     => Buffer,
          Area       => ((SEL_AUTH_X, SELECTOR_Y + 3),
                         SEL_AUTH_W, SELECTOR_TITLE_H - 5),
          Msg        => "Artists",
@@ -325,7 +327,7 @@ package body GUI is
          Outline    => False,
          Foreground => White);
       Bitmapped_Drawing.Draw_String
-        (Buffer     => Buffer.all,
+        (Buffer     => Buffer,
          Area       => ((SEL_ALBUM_X, SELECTOR_Y + 3),
                         SEL_ALBUM_W, SELECTOR_TITLE_H - 5),
          Msg        => "Albums",
@@ -334,7 +336,7 @@ package body GUI is
          Outline    => False,
          Foreground => White);
       Bitmapped_Drawing.Draw_String
-        (Buffer     => Buffer.all,
+        (Buffer     => Buffer,
          Area       => ((SEL_TRACKS_X, SELECTOR_Y + 3),
                         SEL_TRACKS_W, SELECTOR_TITLE_H - 5),
          Msg        => "Tracks",
@@ -345,16 +347,16 @@ package body GUI is
 
       Buffer.Draw_Horizontal_Line
         (Black,
-         (0, SELECTOR_Y), LCD_W);
+         0, SELECTOR_Y, LCD_W);
       Buffer.Draw_Horizontal_Line
         (Black,
-         (0, SELECTOR_Y + SELECTOR_HEIGHT - 1), LCD_W);
+         0, SELECTOR_Y + SELECTOR_HEIGHT - 1, LCD_W);
       Buffer.Draw_Vertical_Line
         (Black,
-         (SEL_ALBUM_X, SELECTOR_Y), SELECTOR_HEIGHT);
+         SEL_ALBUM_X, SELECTOR_Y, SELECTOR_HEIGHT);
       Buffer.Draw_Vertical_Line
         (Black,
-         (SEL_TRACKS_X, SELECTOR_Y), SELECTOR_HEIGHT);
+         SEL_TRACKS_X, SELECTOR_Y, SELECTOR_HEIGHT);
    end Draw_Selector_Background;
 
    ---------------------
@@ -451,10 +453,10 @@ package body GUI is
             begin
                Selectors (Id).Buffer.Fill_Rect
                  (Color  => (if J = 1 then Transparent else Light_Steel_Blue),
-                  Area   => ((X      => 0,
-                              Y      => Y),
-                             Width  => Selectors (Id).Buffer.Width,
-                             Height => SEL_FONT_H));
+                  X      => 0,
+                  Y      => Y,
+                  Width  => Selectors (Id).Buffer.Width,
+                  Height => SEL_FONT_H);
                Bitmapped_Drawing.Draw_String
                  (Buffer     => Selectors (Id).Buffer,
                   Start      => (MARGIN, Y),
@@ -565,9 +567,11 @@ package body GUI is
 
       Copy_Rect
         (Src_Buffer  => Selectors (Id).Buffer,
-         Src_Pt      => (0, Y_Src),
-         Dst_Buffer  => Display.Hidden_Buffer (2).all,
-         Dst_Pt      => (X_Dst, Y_Dst),
+         X_Src       => 0,
+         Y_Src       => Y_Src,
+         Dst_Buffer  => Display.Get_Hidden_Buffer (2),
+         X_Dst       => X_Dst,
+         Y_Dst       => Y_Dst,
          Width       => Selectors (Id).Buffer.Width,
          Height      => Height,
          Synchronous => False);
@@ -578,7 +582,7 @@ package body GUI is
    ---------------
 
    procedure Draw_Play
-     (Buffer : Any_Bitmap_Buffer;
+     (Buffer : Bitmap_Buffer'Class;
       Color  : HAL.Bitmap.Bitmap_Color)
    is
       Size : constant := PLAY_PAUSE_SIZE;
@@ -589,8 +593,8 @@ package body GUI is
    begin
       for J in 0 .. Size / 2 loop
          W := J * 2;
-         Buffer.Draw_Horizontal_Line (Color, (X, Y + J), W);
-         Buffer.Draw_Horizontal_Line (Color, (X, Y + Size - J), W);
+         Buffer.Draw_Horizontal_Line (Color, X, Y + J, W);
+         Buffer.Draw_Horizontal_Line (Color, X, Y + Size - J, W);
       end loop;
    end Draw_Play;
 
@@ -599,7 +603,7 @@ package body GUI is
    ----------------
 
    procedure Draw_Pause
-     (Buffer : Any_Bitmap_Buffer;
+     (Buffer : Bitmap_Buffer'Class;
       Color  : HAL.Bitmap.Bitmap_Color)
    is
       Size : constant := PLAY_PAUSE_SIZE;
@@ -607,8 +611,8 @@ package body GUI is
       Y    : constant := CONTROLLER_Y + (CONTROLLER_HEIGHT - Size) / 2;
       W    : constant := PLAY_PAUSE_SIZE / 3;
    begin
-      Buffer.Fill_Rect (Color, ((X, Y), W, Size));
-      Buffer.Fill_Rect (Color, ((X + Size - W - 1, Y), W, Size));
+      Buffer.Fill_Rect (Color, X, Y, W, Size);
+      Buffer.Fill_Rect (Color, X + Size - W - 1, Y, W, Size);
    end Draw_Pause;
 
    ---------------
@@ -616,7 +620,7 @@ package body GUI is
    ---------------
 
    procedure Draw_Next
-     (Buffer : Any_Bitmap_Buffer;
+     (Buffer : Bitmap_Buffer'Class;
       Color  : HAL.Bitmap.Bitmap_Color)
    is
       Size : constant := PREV_NEXT_SIZE;
@@ -627,10 +631,10 @@ package body GUI is
    begin
       for J in 0 .. Size / 2 loop
          W := J * 2;
-         Buffer.Draw_Horizontal_Line (Color, (X, Y + J), W);
-         Buffer.Draw_Horizontal_Line (Color, (X, Y + Size - J), W);
+         Buffer.Draw_Horizontal_Line (Color, X, Y + J, W);
+         Buffer.Draw_Horizontal_Line (Color, X, Y + Size - J, W);
       end loop;
-      Buffer.Draw_Vertical_Line (Color, (X + Size - 1, Y), Size);
+      Buffer.Draw_Vertical_Line (Color, X + Size - 1, Y, Size);
    end Draw_Next;
 
    ---------------
@@ -638,7 +642,7 @@ package body GUI is
    ---------------
 
    procedure Draw_Prev
-     (Buffer : Any_Bitmap_Buffer;
+     (Buffer : Bitmap_Buffer'Class;
       Color  : HAL.Bitmap.Bitmap_Color)
    is
       Size : constant := PREV_NEXT_SIZE;
@@ -649,11 +653,11 @@ package body GUI is
    begin
       for J in 0 .. Size / 2 loop
          W := J * 2;
-         Buffer.Draw_Horizontal_Line (Color, (X + Size - W - 1, Y + J), W);
-         Buffer.Draw_Horizontal_Line (Color, (X + Size - W - 1, Y + Size - J), W);
+         Buffer.Draw_Horizontal_Line (Color, X + Size - W - 1, Y + J, W);
+         Buffer.Draw_Horizontal_Line (Color, X + Size - W - 1, Y + Size - J, W);
       end loop;
 
-      Buffer.Draw_Vertical_Line (Color, (X, Y), Size);
+      Buffer.Draw_Vertical_Line (Color, X, Y, Size);
    end Draw_Prev;
 
    --------------------------
@@ -661,7 +665,7 @@ package body GUI is
    --------------------------
 
    procedure Set_Controller_State
-     (Buffer   : Any_Bitmap_Buffer;
+     (Buffer   : Bitmap_Buffer'Class;
       Playing  : Boolean;
       Has_Next : Boolean;
       Has_Prev : Boolean)
@@ -669,10 +673,10 @@ package body GUI is
    begin
       Buffer.Fill_Rect
         (Transparent,
-         ((X      => PLAY_X,
-           Y      => PLAY_PAUSE_Y),
-          Width  => PLAY_PAUSE_SIZE,
-          Height => PLAY_PAUSE_SIZE));
+         X      => PLAY_X,
+         Y      => PLAY_PAUSE_Y,
+         Width  => PLAY_PAUSE_SIZE,
+         Height => PLAY_PAUSE_SIZE);
 
       if Playing then
          Draw_Pause (Buffer, Dark_Slate_Gray);
@@ -758,12 +762,12 @@ package body GUI is
       Last_Volume := (L => Tmp_L,
                       R => Tmp_R);
 
-      Display.Hidden_Buffer (1).Fill_Rect
+      Display.Get_Hidden_Buffer (1).Fill_Rect
         (Transparent,
-         ((X      => 20,
-           Y      => Display.Height - 35),
-          Width  => W,
-          Height => 25));
+         X      => 20,
+         Y      => Display.Get_Height - 35,
+         Width  => W,
+         Height => 25);
 
       Display_VUmeter
         (Percent (Tmp_L * 100.0), VUMETER_X, VUMETER_Y, W);
@@ -784,12 +788,12 @@ package body GUI is
       Step_W : constant Natural := W / Steps;
       Color  : Bitmap_Color;
    begin
-      Display.Hidden_Buffer (1).Fill_Rect
+      Display.Get_Hidden_Buffer (1).Fill_Rect
         (Transparent,
-         ((X      => X,
-           Y      => Y),
-          Width  => W,
-          Height => 10));
+         X      => X,
+         Y      => Y,
+         Width  => W,
+         Height => 10);
 
       for J in 1 .. Steps loop
          exit when Vol * 2 * Steps < 100 * 2 * J - 1;
@@ -801,12 +805,12 @@ package body GUI is
             Color := HAL.Bitmap.Red;
          end if;
 
-         Display.Hidden_Buffer (1).Fill_Rect
+         Display.Get_Hidden_Buffer (1).Fill_Rect
            (Color,
-            ((X      => X + Step_W * (J - 1),
-              Y      => Y),
-             Width  => Step_W - 1,
-             Height => 10));
+            X      => X + Step_W * (J - 1),
+            Y      => Y,
+            Width  => Step_W - 1,
+            Height => 10);
       end loop;
    end Display_VUmeter;
 
@@ -951,7 +955,7 @@ package body GUI is
    procedure Initialize
    is
       W : Natural;
-      Buf : constant Any_Bitmap_Buffer := Display.Hidden_Buffer (1);
+      Buf : Bitmap_Buffer'Class renames Display.Get_Hidden_Buffer (1);
    begin
       Display.Set_Background (245, 245, 245); --  White Smoke
       Buf.Fill (Transparent);
@@ -959,7 +963,7 @@ package body GUI is
 --        Display.Hidden_Buffer (1).Fill_Rect
 --          (Midnight_Blue, 0, 0, TITLE_W, TITLE_HEIGHT);
       Bitmapped_Drawing.Draw_String
-        (Buffer     => Buf.all,
+        (Buffer     => Buf,
          Area       => ((0, (TITLE_HEIGHT - TITLE_FNT_H) / 2),
                         TITLE_W, TITLE_FNT_H),
          Msg        => TITLE_STRING,
@@ -985,8 +989,8 @@ package body GUI is
            (Addr       => System.Null_Address,
             Width      => W,
             Height     => 0,
-            Color_Mode => Display.Color_Mode (2),
-            Swapped    => Display.DMA2D_Hidden_Buffer (2).Swapped);
+            Color_Mode => Display.Get_Color_Mode (2),
+            Swapped    => Display.Get_Hidden_Buffer (2).Swapped);
       end loop;
 
       Draw_Selector_Background (Buf);
@@ -1027,12 +1031,12 @@ package body GUI is
       use type System.Address;
    begin
       if not Card_Present then
-         Display.Hidden_Buffer (2).Fill_Rect
+         Display.Get_Hidden_Buffer (2).Fill_Rect
            (Color  => Transparent,
-            Area   => ((X      => 0,
-                        Y      => SELECTOR_Y),
-                       Width  => LCD_W,
-                       Height => SELECTOR_HEIGHT));
+            X      => 0,
+            Y      => SELECTOR_Y,
+            Width  => LCD_W,
+            Height => SELECTOR_HEIGHT);
          Current_Track := No_Id;
 
          if Selectors (Sel_Artist).Buffer.Addr /= System.Null_Address then
@@ -1066,7 +1070,7 @@ package body GUI is
       end if;
 
       Set_Controller_State
-        (Display.Hidden_Buffer (1),
+        (Display.Get_Hidden_Buffer (1),
          Playing  => False,
          Has_Next => False,
          Has_Prev => False);
@@ -1400,7 +1404,7 @@ package body GUI is
             when Audio_Paused_Event =>
                State := Paused;
                Set_Controller_State
-                 (Display.Hidden_Buffer (1),
+                 (Display.Get_Hidden_Buffer (1),
                   Playing  => False,
                   Has_Next => Play_Loop
                     or else Wav_DB.Has_Next_Track (Sel, Current_Track),
@@ -1411,7 +1415,7 @@ package body GUI is
             when Audio_Resumed_Event =>
                State := Playing;
                Set_Controller_State
-                 (Display.Hidden_Buffer (1),
+                 (Display.Get_Hidden_Buffer (1),
                   Playing  => True,
                   Has_Next => Play_Loop
                     or else Wav_DB.Has_Next_Track (Sel, Current_Track),
@@ -1431,7 +1435,7 @@ package body GUI is
                Set_Subtitle
                  (Track (Event.Track), 2, Dark_Slate_Gray);
                Set_Controller_State
-                 (Display.Hidden_Buffer (1),
+                 (Display.Get_Hidden_Buffer (1),
                   Playing  => True,
                   Has_Next => Play_Loop
                     or else Wav_DB.Has_Next_Track (Sel, Current_Track),
@@ -1450,7 +1454,7 @@ package body GUI is
                   Set_Subtitle ("", 2);
 
                   Set_Controller_State
-                    (Display.Hidden_Buffer (1),
+                    (Display.Get_Hidden_Buffer (1),
                      Playing  => False,
                      Has_Next => False,
                      Has_Prev => False);

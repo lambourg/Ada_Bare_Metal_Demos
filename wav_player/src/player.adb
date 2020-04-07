@@ -30,7 +30,7 @@ with Wav_Player;
 with HAL.Bitmap;                 use HAL.Bitmap;
 with HAL.Framebuffer;            use HAL.Framebuffer;
 
-with Cortex_M.Cache;
+--  with Cortex_M.Cache;
 with STM32.Board;                use STM32.Board;
 with STM32.SDRAM;
 
@@ -41,7 +41,7 @@ procedure Player is
 begin
    --  It looks like the FATFS library is not totally immune to data-cache
    --  issues currently, so disable cache for now...
-   Cortex_M.Cache.Disable_D_Cache;
+   --  Cortex_M.Cache.Disable_D_Cache;
    STM32.SDRAM.Initialize;
 
    SDCard_Device.Initialize;
@@ -51,15 +51,15 @@ begin
    Display.Initialize_Layer (2, ARGB_1555);
    GUI.Initialize;
 
-   Touch_Panel.Initialize
-     (Orientation       => Landscape,
-      Calibrate         => False,
-      Enable_Interrupts => True);
-   Gestures.Initialize (GUI.On_Gesture_Event'Access);
-
    Wav_Player.Initialize
      (Volume   => 80,
       State_CB => GUI.On_Audio_Event'Access);
+
+   Touch_Panel.Initialize
+     (Orientation       => Landscape,
+      Calibrate         => False,
+      Enable_Interrupts => False);
+   Gestures.Initialize (GUI.On_Gesture_Event'Access);
 
    GUI.Main_Loop;
 end Player;
