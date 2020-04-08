@@ -38,6 +38,7 @@ with STM32.SDRAM;
 with HAL.Bitmap;            use HAL.Bitmap;
 with HAL.Framebuffer;
 
+with Bitmapped_Drawing;     use Bitmapped_Drawing;
 with Framebuffer_Helper;    use Framebuffer_Helper;
 
 with Gestures;
@@ -74,10 +75,10 @@ is
 
    begin
       if G.Id = Gestures.Tap
-        and then G.Origin.X >= Area.Position.X
-        and then G.Origin.Y >= Area.Position.Y
-        and then G.Origin.X <= Area.Position.X + Area.Width
-        and then G.Origin.Y <= Area.Position.Y + Area.Height
+        and then G.Origin.X >= Area.X
+        and then G.Origin.Y >= Area.Y
+        and then G.Origin.X <= Area.X + Area.Width
+        and then G.Origin.Y <= Area.Y + Area.Height
       then
          On_Autoplay_Clicked;
       elsif not Game.Is_Sliding then
@@ -95,8 +96,8 @@ begin
    Display.Initialize (Mode => HAL.Framebuffer.Polling);
    Display.Initialize_Layer (1, ARGB_1555);
    Display.Initialize_Layer (2, ARGB_1555,
-                             Status_Layer_Area.Position.X,
-                             Status_Layer_Area.Position.Y,
+                             Status_Layer_Area.X,
+                             Status_Layer_Area.Y,
                              Status_Layer_Area.Width,
                              Status_Layer_Area.Height);
    Touch_Panel.Initialize (Enable_Interrupts => True);
@@ -108,7 +109,7 @@ begin
    Game.Init;
    Game.Start;
 
-   Buffer := Display.DMA2D_Hidden_Buffer (1);
+   Buffer := DMA2D_Bitmap_Buffer (Display.Get_Hidden_Buffer (1));
    Game.Draw (Buffer);
    Status.Init_Area (Buffer);
 
@@ -126,7 +127,7 @@ begin
 
    Update_All_Layers;
 
-   STM32.Board.Turn_Off (STM32.Board.Green_LED);
+   STM32.Board.Turn_Off (STM32.Board.Green);
 
    loop
       delay until Time_Last;

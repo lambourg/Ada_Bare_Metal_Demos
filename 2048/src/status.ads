@@ -22,10 +22,11 @@
 ------------------------------------------------------------------------------
 
 with HAL.Bitmap;           use HAL.Bitmap;
+with Bitmapped_Drawing;    use Bitmapped_Drawing;
 
 package Status is
 
-   procedure Init_Area (Buffer : in out HAL.Bitmap.Bitmap_Buffer'Class);
+   procedure Init_Area (Buffer : HAL.Bitmap.Bitmap_Buffer'Class);
 
    procedure Set_Score
      (Score : Natural);

@@ -21,15 +21,16 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
+with Interfaces;           use Interfaces;
+
 with Cortex_M.Cache;       use Cortex_M.Cache;
 
 with HAL;                  use HAL;
 with STM32.RNG;
 with STM32.Board;          use STM32.Board;
+with STM32.DMA2D_Bitmap;   use STM32.DMA2D_Bitmap;
 with STM32.SDRAM;          use STM32.SDRAM;
 with Gestures;             use Gestures;
-
-with Bitmapped_Drawing;
 
 package body Game is
 
@@ -45,20 +46,20 @@ package body Game is
    procedure Draw_Cell
      (Coord : Point;
       Value : Integer;
-      Dst   : in out DMA2D_Bitmap_Buffer);
+      Dst   : Bitmap_Buffer'Class);
 
    function Cell_To_Coordinate (X : Size; Y : Size) return Point;
 
-   procedure Draw_Background (Dst : in out DMA2D_Bitmap_Buffer);
+   procedure Draw_Background (Dst : Bitmap_Buffer'Class);
 
    procedure Draw_Grid_To_Grid
      (Src : Bitmap_Buffer'Class;
-      Dst : in out DMA2D_Bitmap_Buffer);
+      Dst : Bitmap_Buffer'Class);
 
    procedure Draw_Cell_Background
      (X, Y   : Integer;
       Color  : Bitmap_Color;
-      Buffer : in out DMA2D_Bitmap_Buffer;
+      Buffer : DMA2D_Bitmap_Buffer;
       Border : Boolean);
 
    ---------------
@@ -80,12 +81,12 @@ package body Game is
       pragma Warnings (Off, "condition is always *");
       if LCD_Natural_Height > LCD_Natural_Width then
          return
-           (Position => (0, 0),
+           (0, 0,
             Width    => LCD_Natural_Width,
             Height   => LCD_Natural_Height - LCD_Natural_Width);
       else
          return
-           (Position => (LCD_Natural_Height, 0),
+           (LCD_Natural_Height, 0,
             Width    => LCD_Natural_Width - LCD_Natural_Height,
             Height   => LCD_Natural_Height);
       end if;
@@ -100,36 +101,38 @@ package body Game is
    is
       Screen_Size : Natural;
       CM          : constant Bitmap_Color_Mode :=
-                      Display.Color_Mode (1);
-      Pixel_Size  : constant Natural := Display.Pixel_Size (1);
+                      Display.Get_Color_Mode (1);
+      Pixel_Size  : constant Natural := Display.Get_Pixel_Size (1);
 
    begin
-      Screen_Size  := Natural'Min (Display.Width, Display.Height);
+      Screen_Size  := Natural'Min (Display.Get_Width, Display.Get_Height);
       Cell_Size    := (Screen_Size - 5 * 8) / 4;
       Int_Border   := 8;
       Ext_Border   := (Screen_Size - 4 * Cell_Size - 3 * Int_Border) / 2;
-      Up_Margin    := Display.Height - Screen_Size;
+      Up_Margin    := Display.Get_Height - Screen_Size;
       --  Up_Margin    := 0;
 
       Background_Buffer :=
-        (Addr       => Reserve (UInt32 (Screen_Size * Screen_Size * Pixel_Size)),
+        (Addr       => Reserve (UInt32
+           (Screen_Size * Screen_Size * Pixel_Size)),
          Color_Mode => CM,
          Width      => Screen_Size,
          Height     => Screen_Size,
-         Swapped    => Display.Swapped);
+         Swapped    => Display.Is_Swapped);
       Background_Slide_Buffer :=
-        (Addr       => Reserve (UInt32 (Screen_Size * Screen_Size * Pixel_Size)),
+        (Addr       => Reserve (UInt32
+           (Screen_Size * Screen_Size * Pixel_Size)),
          Color_Mode => CM,
          Width      => Screen_Size,
          Height     => Screen_Size,
-         Swapped    => Display.Swapped);
+         Swapped    => Display.Is_Swapped);
       Cells_Buffer :=
         (Addr       =>
            Reserve (UInt32 (Cell_Size * Cell_Size * 16 * Pixel_Size)),
          Color_Mode => CM,
          Width      => Cell_Size,
          Height     => Cell_Size * 16,
-         Swapped    => Display.Swapped);
+         Swapped    => Display.Is_Swapped);
 
       Init_Background_Buffer;
       Init_Cells_Buffer;
@@ -142,20 +145,25 @@ package body Game is
    procedure Draw_Cell_Background
      (X, Y   : Integer;
       Color  : Bitmap_Color;
-      Buffer : in out DMA2D_Bitmap_Buffer;
+      Buffer : DMA2D_Bitmap_Buffer;
       Border : Boolean)
    is
       Radius : constant Natural := Cell_Size / 10;
    begin
-      Buffer.Fill_Rounded_Rect
-        (Color  => Color,
-         Area   => ((X, Y), Cell_Size, Cell_Size),
+      Fill_Rounded_Rectangle
+        (Buffer,
+         Hue    => Color,
+         X      => X,
+         Y      => Y,
+         Width  => Cell_Size,
+         Height => Cell_Size,
          Radius => Radius);
 
       if Border then
-         Buffer.Draw_Rounded_Rect
-           (Color     => (255, 128, 128, 128),
-            Area      => ((X, Y), Cell_Size, Cell_Size),
+         Draw_Rounded_Rectangle
+           (Buffer    => Buffer,
+            Hue       => (255, 128, 128, 128),
+            Area      => (X, Y, Cell_Size, Cell_Size),
             Radius    => Radius,
             Thickness => 1);
       end if;
@@ -229,11 +237,10 @@ package body Game is
             Max_W  : constant Natural := Cell_Size * 3 / 4;
             Fg     : Bitmap_Color := White;
             Str_Area : constant Rect :=
-                         (Position =>
-                            ((Cell_Size - Max_W) / 2,
-                             (Cell_Size - Height) / 2 + I * Cell_Size),
-                          Width    => Max_W,
-                          Height   => Height);
+                         (X      => (Cell_Size - Max_W) / 2,
+                          Y      => (Cell_Size - Height) / 2 + I * Cell_Size,
+                          Width  => Max_W,
+                          Height => Height);
          begin
             if Num = 2 or else Num = 4 then
                Fg := (255, 100, 90, 80);
@@ -260,13 +267,15 @@ package body Game is
 
    procedure Draw_Grid_To_Grid
      (Src : Bitmap_Buffer'Class;
-      Dst : in out DMA2D_Bitmap_Buffer) is
+      Dst : Bitmap_Buffer'Class) is
    begin
       Copy_Rect
         (Src_Buffer  => Src,
-         Src_Pt      => (0, 0),
+         X_Src       => 0,
+         Y_Src       => 0,
          Dst_Buffer  => Dst,
-         Dst_Pt      => (0, Dst.Height - Background_Buffer.Height),
+         X_Dst       => 0,
+         Y_Dst       => Dst.Height - Background_Buffer.Height,
          Width       => Src.Width,
          Height      => Src.Height,
          Synchronous => False,
@@ -277,7 +286,7 @@ package body Game is
    -- Draw_Background --
    ---------------------
 
-   procedure Draw_Background (Dst : in out DMA2D_Bitmap_Buffer) is
+   procedure Draw_Background (Dst : Bitmap_Buffer'Class) is
    begin
       Draw_Grid_To_Grid (Background_Buffer, Dst);
    end Draw_Background;
@@ -299,14 +308,16 @@ package body Game is
    procedure Draw_Cell
      (Coord : Point;
       Value : Integer;
-      Dst   : in out DMA2D_Bitmap_Buffer)
+      Dst   : Bitmap_Buffer'Class)
    is
    begin
       Copy_Rect_Blend
         (Src_Buffer  => Cells_Buffer,
-         Src_Pt      => (0, (Value - 1) * Cell_Size),
+         X_Src       => 0,
+         Y_Src       => (Value - 1) * Cell_Size,
          Dst_Buffer  => Dst,
-         Dst_Pt      => (Coord.X, Coord.Y),
+         X_Dst       => Coord.X,
+         Y_Dst       => Coord.Y,
          Width       => Cell_Size,
          Height      => Cell_Size,
          Synchronous => False,
@@ -317,7 +328,7 @@ package body Game is
    -- Draw --
    ----------
 
-   procedure Draw (Dst : in out DMA2D_Bitmap_Buffer) is
+   procedure Draw (Dst : Bitmap_Buffer'Class) is
       Value : Integer := 0;
    begin
       Cortex_M.Cache.Clean_Invalidate_DCache (Dst.Addr, Dst.Buffer_Size);
@@ -455,7 +466,7 @@ package body Game is
    -- Slide --
    -----------
 
-   function Slide (Dst : in out DMA2D_Bitmap_Buffer) return Boolean
+   function Slide (Dst : Bitmap_Buffer'Class) return Boolean
    is
       Length      : Integer;
       Is_Moving   : Boolean := False;
@@ -479,7 +490,7 @@ package body Game is
       end loop;
 
       if BG_Changed then
-         Background_Slide_Buffer.Sync;
+         Background_Slide_Buffer.Wait_Transfer;
       end if;
 
       Cortex_M.Cache.Clean_Invalidate_DCache (Dst.Addr, Dst.Buffer_Size);

@@ -288,7 +288,8 @@ package body Filesystem.FAT.Files is
                   Data
                     (Data_Idx ..
                          Data_Idx +
-                           Natural (N_Blocks) * Natural (File.FS.Block_Size) - 1))
+                           Natural (N_Blocks) *
+                           Natural (File.FS.Block_Size) - 1))
                then
                   --  Read error: return the number of data read so far
                   Length := FAT_File_Size (Data_Idx - Data'First);

@@ -620,7 +620,8 @@ package body Renderer is
                Done := False;
                for J in 1 .. N_Sprites loop
                   if Sprites (J).Dist < S.Dist then
-                     Sprites (J + 1 .. N_Sprites + 1) := Sprites (J .. N_Sprites);
+                     Sprites (J + 1 .. N_Sprites + 1) :=
+                       Sprites (J .. N_Sprites);
                      Sprites (J) := S;
                      Done := True;
                      exit;
@@ -739,14 +740,17 @@ package body Renderer is
                                  declare
                                     R : UInt16 :=
                                           Shift_Right
-                                            (New_Color and 2#0_11111_00000_00000#,
+                                            (New_Color and
+                                                     2#0_11111_00000_00000#,
                                              10);
                                     G : UInt16 :=
                                           Shift_Right
-                                            (New_Color and 2#0_00000_11111_00000#,
+                                            (New_Color and
+                                                     2#0_00000_11111_00000#,
                                              5);
                                     B : UInt16 :=
-                                          New_Color and 2#0_00000_00000_11111#;
+                                          New_Color and
+                                              2#0_00000_00000_11111#;
                                  begin
                                     R := Shift_Left
                                       ((M * R + Gr5) and 16#1F80#,
@@ -770,10 +774,13 @@ package body Renderer is
                      else
                         declare
                            Y0      : constant Natural :=
-                                       (if S.dY = 0 then 0
-                                        else S.dY * Textures.Texture_Size / S.Scale);
+                                       (if S.dY = 0
+                                        then 0
+                                        else S.dY * Textures.Texture_Size /
+                                          S.Scale);
                            Y1      : constant Natural :=
-                                       (if S.dY = 0 then Textures.Texture_Size - 1
+                                       (if S.dY = 0
+                                        then Textures.Texture_Size - 1
                                         else Textures.Texture_Size - Y0 - 1);
                            Row     : Natural;
                            R_Next  : Natural := 0;
@@ -801,7 +808,8 @@ package body Renderer is
                                  --  When texture needs expansion, it's too
                                  --  close to be subject to fog, so we can
                                  --  take the texture's color directly.
-                                 Cache.Column (Row - First .. R_Next - First - 1) :=
+                                 Cache.Column
+                                   (Row - First .. R_Next - First - 1) :=
                                    (others => Color);
                               end if;
                            end loop;

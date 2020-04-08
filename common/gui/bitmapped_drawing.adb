@@ -176,10 +176,10 @@ package body Bitmapped_Drawing is
       is
       begin
          Draw_Line (Buffer,
-                    (Area.Position.X + Natural (Float (X0) * Ratio),
-                     Area.Position.Y + Y0),
-                    (Area.Position.X + Natural (Float (X1) * Ratio),
-                     Area.Position.Y + Y1),
+                    (Area.X + Natural (Float (X0) * Ratio),
+                     Area.Y + Y0),
+                    (Area.X + Natural (Float (X1) * Ratio),
+                     Area.Y + Y1),
                     Foreground,
                     Width,
                     Fast);
@@ -207,13 +207,13 @@ package body Bitmapped_Drawing is
       end loop;
 
       if Outline and then Area.Height > 40 then
-         for Y in Area.Position.Y + 1 .. Area.Position.Y + Area.Height loop
-            Prev := Buffer.Get_Pixel (Area.Position.X, Y);
+         for Y in Area.Y + 1 .. Area.Y + Area.Height loop
+            Prev := Buffer.Get_Pixel (Area.X, Y);
             if Prev = FG then
-               Buffer.Set_Pixel (Area.Position.X, Y, Black);
+               Buffer.Set_Pixel (Area.X, Y, Black);
             end if;
 
-            for X in Area.Position.X + 1 .. Area.Position.X + Area.Width loop
+            for X in Area.X + 1 .. Area.X + Area.Width loop
                declare
                   Col : constant Unsigned_32 := Buffer.Get_Pixel (X, Y);
                   Top : constant Unsigned_32 := Buffer.Get_Pixel (X, Y - 1);
@@ -360,10 +360,10 @@ package body Bitmapped_Drawing is
    is
       X0, Y0, X1, Y1 : Natural;
    begin
-      X0 := Area.Position.X;
-      Y0 := Area.Position.Y;
-      X1 := Area.Position.X + Area.Width - 1;
-      Y1 := Area.Position.Y + Area.Height - 1;
+      X0 := Area.X;
+      Y0 := Area.Y;
+      X1 := Area.X + Area.Width - 1;
+      Y1 := Area.Y + Area.Height - 1;
       Buffer.Fill_Rect
         (Hue,
          X0 - Thickness / 2, Y0,
@@ -404,14 +404,10 @@ package body Bitmapped_Drawing is
       ddF_Y : Integer := (-2) * Radius;
       X     : Integer := 0;
       Y     : Integer := Radius;
-      Center_Top : constant Natural :=
-        Area.Position.Y + Radius;
-      Center_Bot : constant Natural :=
-        Area.Position.Y + Area.Height - 1 - Radius;
-      Center_Lft : constant Natural :=
-        Area.Position.X + Radius;
-      Center_Rgt : constant Natural :=
-        Area.Position.X + Area.Width - 1 - Radius;
+      Center_Top : constant Natural := Area.Y + Radius;
+      Center_Bot : constant Natural := Area.Y + Area.Height - 1 - Radius;
+      Center_Lft : constant Natural := Area.X + Radius;
+      Center_Rgt : constant Natural := Area.X + Area.Width - 1 - Radius;
 
       procedure Draw_Point (X, Y : Natural) with Inline;
 
@@ -441,26 +437,26 @@ package body Bitmapped_Drawing is
 
       Buffer.Fill_Rect
         (Hue,
-         Area.Position.X - Thickness / 2,
-         Area.Position.Y + Radius,
+         Area.X - Thickness / 2,
+         Area.Y + Radius,
          Thickness,
          Area.Height - 2 * Radius);
       Buffer.Fill_Rect
         (Hue,
-         Area.Position.X + Area.Width - Thickness / 2 - 1,
-         Area.Position.Y + Radius,
+         Area.X + Area.Width - Thickness / 2 - 1,
+         Area.Y + Radius,
          Thickness,
          Area.Height - 2 * Radius);
       Buffer.Fill_Rect
         (Hue,
-         Area.Position.X + Radius,
-         Area.Position.Y - Thickness / 2,
+         Area.X + Radius,
+         Area.Y - Thickness / 2,
          Area.Width - 2 * Radius,
          Thickness);
       Buffer.Fill_Rect
         (Hue,
-         Area.Position.X + Radius,
-         Area.Position.Y + Area.Height - Thickness / 2 - 1,
+         Area.X + Radius,
+         Area.Y + Area.Height - Thickness / 2 - 1,
          Area.Width - 2 * Radius,
          Thickness);
 

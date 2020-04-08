@@ -253,16 +253,16 @@ package body GUI is
       Y : constant := (TITLE_HEIGHT - 2 * SUBTITLE_FNT_H) / 2;
    begin
       Display.Get_Hidden_Buffer (1).Fill_Rect
-        (Transparent,
-         TITLE_W,
-         Y + (if Line = 2 then SUBTITLE_FNT_H else 0),
-         Display.Get_Width - TITLE_W,
-         SUBTITLE_FNT_H);
+        (Color  => Transparent,
+         X      => TITLE_W,
+         Y      => Y + (if Line = 2 then SUBTITLE_FNT_H else 0),
+         Width  => Display.Get_Width - TITLE_W,
+         Height => SUBTITLE_FNT_H);
       Display.Get_Hidden_Buffer (1).Wait_Transfer;
       Bitmapped_Drawing.Draw_String
         (Buffer     => Display.Get_Hidden_Buffer (1),
-         Area       => ((TITLE_W,
-                         Y + (if Line = 2 then SUBTITLE_FNT_H else 0)),
+         Area       => (TITLE_W,
+                        Y + (if Line = 2 then SUBTITLE_FNT_H else 0),
                         Display.Get_Width - TITLE_W,
                         SUBTITLE_FNT_H),
          Msg        => Msg,
@@ -319,7 +319,7 @@ package body GUI is
         (Steel_Blue, 0, SELECTOR_Y + 1, LCD_W, SELECTOR_TITLE_H - 1);
       Bitmapped_Drawing.Draw_String
         (Buffer     => Buffer,
-         Area       => ((SEL_AUTH_X, SELECTOR_Y + 3),
+         Area       => (SEL_AUTH_X, SELECTOR_Y + 3,
                         SEL_AUTH_W, SELECTOR_TITLE_H - 5),
          Msg        => "Artists",
          Font       => Font,
@@ -328,7 +328,7 @@ package body GUI is
          Foreground => White);
       Bitmapped_Drawing.Draw_String
         (Buffer     => Buffer,
-         Area       => ((SEL_ALBUM_X, SELECTOR_Y + 3),
+         Area       => (SEL_ALBUM_X, SELECTOR_Y + 3,
                         SEL_ALBUM_W, SELECTOR_TITLE_H - 5),
          Msg        => "Albums",
          Font       => Font,
@@ -337,7 +337,7 @@ package body GUI is
          Foreground => White);
       Bitmapped_Drawing.Draw_String
         (Buffer     => Buffer,
-         Area       => ((SEL_TRACKS_X, SELECTOR_Y + 3),
+         Area       => (SEL_TRACKS_X, SELECTOR_Y + 3,
                         SEL_TRACKS_W, SELECTOR_TITLE_H - 5),
          Msg        => "Tracks",
          Font       => Font,
@@ -653,8 +653,10 @@ package body GUI is
    begin
       for J in 0 .. Size / 2 loop
          W := J * 2;
-         Buffer.Draw_Horizontal_Line (Color, X + Size - W - 1, Y + J, W);
-         Buffer.Draw_Horizontal_Line (Color, X + Size - W - 1, Y + Size - J, W);
+         Buffer.Draw_Horizontal_Line
+           (Color, X + Size - W - 1, Y + J, W);
+         Buffer.Draw_Horizontal_Line
+           (Color, X + Size - W - 1, Y + Size - J, W);
       end loop;
 
       Buffer.Draw_Vertical_Line (Color, X, Y, Size);
@@ -964,7 +966,7 @@ package body GUI is
 --          (Midnight_Blue, 0, 0, TITLE_W, TITLE_HEIGHT);
       Bitmapped_Drawing.Draw_String
         (Buffer     => Buf,
-         Area       => ((0, (TITLE_HEIGHT - TITLE_FNT_H) / 2),
+         Area       => (0, (TITLE_HEIGHT - TITLE_FNT_H) / 2,
                         TITLE_W, TITLE_FNT_H),
          Msg        => TITLE_STRING,
          Font       => Font,

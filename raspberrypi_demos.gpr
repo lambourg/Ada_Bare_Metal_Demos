@@ -6,7 +6,7 @@ aggregate project RaspberryPi_Demos is
    Board : Board_Type := external ("Board", "rpi2");
 
    type RTS_Profile_Type is ("ravenscar-sfp", "ravenscar-full");
-   RTS_Profile : RTS_Profile_Type := external ("RTS_Profile", "ravenscar-sfp");
+   RTS_Profile : RTS_Profile_Type := external ("RTS", "ravenscar-sfp");
 
    type BUILD_TYPE is ("Debug", "Production");
    Build : BUILD_Type := external ("PLATFORM_BUILD", "Debug");

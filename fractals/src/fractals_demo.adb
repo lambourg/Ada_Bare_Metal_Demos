@@ -119,9 +119,11 @@ is
    begin
       return
         (X => Current_Screen.X0 +
-           Current_Screen.Width / Base_Float (Display.Get_Width) * Base_Float (X),
+           Current_Screen.Width / Base_Float (Display.Get_Width) *
+           Base_Float (X),
          Y => Current_Screen.Y0 +
-           Current_Screen.Height / Base_Float (Display.Get_Height) * Base_Float (Y));
+           Current_Screen.Height / Base_Float (Display.Get_Height) *
+           Base_Float (Y));
    end To_Coord;
 
    ---------------

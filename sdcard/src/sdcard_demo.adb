@@ -219,7 +219,8 @@ begin
 
             begin
                if not Fail then
-                  Img (Img'First .. Img'Last - 2) := Img (Img'First + 1 .. Img'Last - 1);
+                  Img (Img'First .. Img'Last - 2) :=
+                    Img (Img'First + 1 .. Img'Last - 1);
                   Img (Img'Last - 1) := '.';
                   Draw_String
                     (Display.Get_Hidden_Buffer (1),

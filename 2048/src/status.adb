@@ -24,12 +24,11 @@
 with Game;
 
 with STM32.Board;          use STM32.Board;
-with Bitmapped_Drawing;    use Bitmapped_Drawing;
 
 package body Status is
 
    Null_Rect   : constant Rect :=
-                   (Position => (0, 0), Width => 0, Height => 0);
+                   (0, 0, 0, 0);
    G_Area      : Rect := Null_Rect;
    Score_Area  : Rect := Null_Rect;
    High_Area   : Rect := Null_Rect;
@@ -60,7 +59,7 @@ package body Status is
    procedure Update_Autoplay;
 
    procedure Draw_Button
-     (Buffer  : in out Bitmap_Buffer'Class;
+     (Buffer  : Bitmap_Buffer'Class;
       Area    : Rect;
       Label   : String;
       State   : Autoplay_State;
@@ -70,7 +69,7 @@ package body Status is
    -- Init_Area --
    ---------------
 
-   procedure Init_Area (Buffer : in out HAL.Bitmap.Bitmap_Buffer'Class)
+   procedure Init_Area (Buffer : HAL.Bitmap.Bitmap_Buffer'Class)
    is
    begin
       if G_Area /= Null_Rect then
@@ -84,74 +83,75 @@ package body Status is
             --  STM32F469
             Margin := 9;
             Score_Area :=
-              (Position => (Margin, Margin),
-               Width    => G_Area.Width - 2 * Margin,
-               Height   => 100);
+              (X      => Margin,
+               Y      => Margin,
+               Width  => G_Area.Width - 2 * Margin,
+               Height => 100);
             High_Area :=
-              (Position => (Margin,
-                            Score_Area.Position.Y +
-                              Score_Area.Height + Margin),
-               Width    => G_Area.Width - 2 * Margin,
-               Height   => 100);
+              (X      => Margin,
+               Y      => Score_Area.Y + Score_Area.Height + Margin,
+               Width  => G_Area.Width - 2 * Margin,
+               Height => 100);
             Btn_Area :=
-              (Position => (Margin,
-                            High_Area.Position.Y + High_Area.Height +
-                              (G_Area.Height - High_Area.Position.Y -
-                                 High_Area.Height - 20) / 2),
-               Width    => G_Area.Width - 2 * Margin,
-               Height   => 60);
+              (X      => Margin,
+               Y      => High_Area.Y + High_Area.Height +
+                 (G_Area.Height - High_Area.Y - High_Area.Height - 20) / 2,
+               Width  => G_Area.Width - 2 * Margin,
+               Height => 60);
          else
             --  STM32F7
             Score_Area :=
-              (Position => (Margin, Margin),
-               Width    => G_Area.Width - 2 * Margin,
-               Height   => 54);
+              (X      => Margin,
+               Y      => Margin,
+               Width  => G_Area.Width - 2 * Margin,
+               Height => 54);
             High_Area :=
-              (Position => (Margin,
-                            Score_Area.Position.Y + Score_Area.Height +
-                              Margin),
-               Width    => G_Area.Width - 2 * Margin,
-               Height   => 54);
+              (X      => Margin,
+               Y      => Score_Area.Y + Score_Area.Height + Margin,
+               Width  => G_Area.Width - 2 * Margin,
+               Height => 54);
             Btn_Area :=
-              (Position => (Margin,
-                            High_Area.Position.Y + High_Area.Height +
-                              (G_Area.Height - High_Area.Position.Y -
-                                 High_Area.Height - 40) / 2),
-               Width    => G_Area.Width - 2 * Margin,
-               Height   => 36);
+              (X      => Margin,
+               Y      =>  High_Area.Y + High_Area.Height +
+                 (G_Area.Height - High_Area.Y - High_Area.Height - 40) / 2,
+               Width  => G_Area.Width - 2 * Margin,
+               Height => 36);
          end if;
       else
          --  STM32F429
          Margin := 2;
          Score_Area :=
-           (Position => (Margin, 2),
-            Width    => G_Area.Width / 2 - 2 * Margin,
-            Height   => 40);
+           (X      => Margin,
+            Y      => 2,
+            Width  => G_Area.Width / 2 - 2 * Margin,
+            Height => 40);
          High_Area :=
-           (Position => (Score_Area.Position.X + Score_Area.Width + Margin,
-                         Score_Area.Position.Y),
-            Width    => G_Area.Width / 2 - Margin,
-            Height   => 40);
+           (X      => Score_Area.X + Score_Area.Width + Margin,
+            Y      => Score_Area.Y,
+            Width  => G_Area.Width / 2 - Margin,
+            Height => 40);
          Btn_Area :=
-           (Position => (Margin + 50,
-                         Score_Area.Position.Y + Score_Area.Height + Margin),
-            Width    => G_Area.Width - 2 * Margin - 100,
-            Height   => 29);
+           (X => Margin + 50,
+            Y      => Score_Area.Y + Score_Area.Height + Margin,
+            Width  => G_Area.Width - 2 * Margin - 100,
+            Height => 29);
       end if;
 
       --  Setup the Score area
-      Buffer.Fill_Rounded_Rect
-        (Color  => Box_BG,
-         Area   => ((X      => G_Area.Position.X + Score_Area.Position.X,
-                     Y      => G_Area.Position.Y + Score_Area.Position.Y),
-                    Width  => Score_Area.Width,
-                    Height => Score_Area.Height),
-         Radius => Margin);
+      Fill_Rounded_Rectangle
+        (Buffer => Buffer,
+         X      => G_Area.X + Score_Area.X,
+         Y      => G_Area.Y + Score_Area.Y,
+         Width  => Score_Area.Width,
+         Height => Score_Area.Height,
+         Radius => Margin,
+         Hue    => Box_BG);
       Draw_String
         (Buffer,
-         Area       => (G_Area.Position + Score_Area.Position,
-                        Score_Area.Width,
-                        Score_Area.Height / 3),
+         Area       => (X      => G_Area.X + Score_Area.X,
+                        Y      => G_Area.Y + Score_Area.Y,
+                        Width  => Score_Area.Width,
+                        Height => Score_Area.Height / 3),
          Msg        => "Score",
          Font       => Game.Times,
          Bold       => False,
@@ -160,16 +160,18 @@ package body Status is
          Fast       => False);
 
       --  Setup the High Score area
-      Buffer.Fill_Rounded_Rect
-        (Color  => Box_BG,
-         Area   => ((X      => G_Area.Position.X + High_Area.Position.X,
-                     Y      => G_Area.Position.Y + High_Area.Position.Y),
-                    Width  => High_Area.Width,
-                    Height => High_Area.Height),
-         Radius => Margin);
+      Fill_Rounded_Rectangle
+        (Buffer => Buffer,
+         X      => G_Area.X + High_Area.X,
+         Y      => G_Area.Y + High_Area.Y,
+         Width  => High_Area.Width,
+         Height => High_Area.Height,
+         Radius => Margin,
+         Hue    => Box_BG);
       Draw_String
         (Buffer,
-         Area       => (G_Area.Position + High_Area.Position,
+         Area       => (G_Area.X + High_Area.X,
+                        G_Area.Y + High_Area.Y,
                         High_Area.Width,
                         High_Area.Height / 3),
          Msg        => "High Score",
@@ -196,9 +198,10 @@ package body Status is
    function Get_Autoplay_Btn_Area return Rect
    is
    begin
-      return (Position => Btn_Area.Position + G_Area.Position,
-              Width    => Btn_Area.Width,
-              Height   => Btn_Area.Height);
+      return (X      => Btn_Area.X + G_Area.X,
+              Y      => Btn_Area.Y + G_Area.Y,
+              Width  => Btn_Area.Width,
+              Height => Btn_Area.Height);
    end Get_Autoplay_Btn_Area;
 
    -----------------
@@ -206,7 +209,7 @@ package body Status is
    -----------------
 
    procedure Draw_Button
-     (Buffer  : in out Bitmap_Buffer'Class;
+     (Buffer  : Bitmap_Buffer'Class;
       Area    : Rect;
       Label   : String;
       State   : Autoplay_State;
@@ -248,63 +251,67 @@ package body Status is
       end if;
 
       if Rounded then
-         Buffer.Fill_Rounded_Rect
-           (Color  => Top,
-            Area   => ((X      => Area.Position.X,
-                        Y      => Area.Position.Y),
-                       Width  => Area.Width,
-                       Height => Area.Height - Shadow),
-            Radius => Margin);
-         Buffer.Fill_Rounded_Rect
-           (Color  => Bottom,
-            Area   => ((X      => Area.Position.X,
-                        Y      => Area.Position.Y + Shadow),
-                       Width  => Area.Width,
-                       Height => Area.Height - Shadow),
-            Radius => Margin);
-         Buffer.Fill_Rounded_Rect
-           (Color  => BG,
-            Area   => ((X      => Area.Position.X,
-                        Y      => Area.Position.Y + Shadow),
-                       Width  => Area.Width,
-                       Height => Area.Height - 2 * Shadow),
-            Radius => Margin);
-         Buffer.Draw_Rounded_Rect
-           (Color     => Border,
+         Fill_Rounded_Rectangle
+           (Buffer => Buffer,
+            X      => Area.X,
+            Y      => Area.Y,
+            Width  => Area.Width,
+            Height => Area.Height - Shadow,
+            Radius => Margin,
+            Hue    => Top);
+         Fill_Rounded_Rectangle
+           (Buffer => Buffer,
+            X      => Area.X,
+            Y      => Area.Y + Shadow,
+            Width  => Area.Width,
+            Height => Area.Height - Shadow,
+            Radius => Margin,
+            Hue    => Bottom);
+         Fill_Rounded_Rectangle
+           (Buffer => Buffer,
+            X      => Area.X,
+            Y      => Area.Y + Shadow,
+            Width  => Area.Width,
+            Height => Area.Height - 2 * Shadow,
+            Radius => Margin,
+            Hue    => BG);
+         Draw_Rounded_Rectangle
+           (Buffer    => Buffer,
             Area      => Area,
             Radius    => Margin,
+            Hue       => Border,
             Thickness => 1);
       else
          Buffer.Fill_Rect
-           (Color => Top,
-            Area  => ((X      => Area.Position.X,
-                       Y      => Area.Position.Y),
-                      Width  => Area.Width,
-                      Height => Shadow));
+           (Color  => Top,
+            X      => Area.X,
+            Y      => Area.Y,
+            Width  => Area.Width,
+            Height => Shadow);
          Buffer.Fill_Rect
-           (Color => Bottom,
-            Area  => ((X      => Area.Position.X,
-                       Y      => Area.Position.Y + Area.Height - Shadow - 1),
-                      Width  => Area.Width,
-                      Height => Shadow));
+           (Color  => Bottom,
+            X      => Area.X,
+            Y      => Area.Y + Area.Height - Shadow - 1,
+            Width  => Area.Width,
+            Height => Shadow);
          Buffer.Fill_Rect
-           (Color => BG,
-            Area  => ((X      => Area.Position.X,
-                       Y      => Area.Position.Y + Shadow),
-                      Width  => Area.Width,
-                      Height => Area.Height - 2 * Shadow));
+           (Color  => BG,
+            X      => Area.X,
+            Y      => Area.Y + Shadow,
+            Width  => Area.Width,
+            Height => Area.Height - 2 * Shadow);
          Buffer.Draw_Rect
-           (Color => Border,
-            Area  => ((X      => Area.Position.X,
-                       Y      => Area.Position.Y),
-                      Width  => Area.Width,
-                      Height => Area.Height));
+           (Color  => Border,
+            X      => Area.X,
+            Y      => Area.Y,
+            Width  => Area.Width,
+            Height => Area.Height);
       end if;
 
       Draw_String
         (Buffer,
-         Area       => ((Area.Position.X + Margin,
-                         Area.Position.Y + Area.Height / 6),
+         Area       => (Area.X + Margin,
+                        Area.Y + Area.Height / 6,
                         Area.Width - 2 * Margin,
                         Area.Height * 3 / 4),
          Msg        => Label,
@@ -322,7 +329,7 @@ package body Status is
    procedure Update_Autoplay is
    begin
       Draw_Button
-        (Display.Hidden_Buffer (2).all, Btn_Area,
+        (Display.Get_Hidden_Buffer (2), Btn_Area,
          "Auto Play", G_Autoplay_State, True);
    end Update_Autoplay;
 
@@ -369,24 +376,25 @@ package body Status is
 
    procedure Set_Score (Score : Natural)
    is
-      Img         : constant String := Score'Img;
-      Area, AreaH : Rect;
-      Buf1        : constant Any_Bitmap_Buffer := Display.Hidden_Buffer (2);
+      Img  : constant String := Score'Img;
+      Area : Rect;
+      Buf1 : Bitmap_Buffer'Class renames Display.Get_Hidden_Buffer (2);
 
    begin
-      Area.Position := (Score_Area.Position.X + 10,
-                        Score_Area.Position.Y + Score_Area.Height / 3 + 2);
-      Area.Width    := Score_Area.Width - 20;
-      Area.Height   := Score_Area.Height * 2 / 3 - 2;
+      Area :=
+        (X      => Score_Area.X + 10,
+         Y      => Score_Area.Y + Score_Area.Height / 3 + 2,
+         Width  => Score_Area.Width - 20,
+         Height => Score_Area.Height * 2 / 3 - 2);
 
       Buf1.Fill_Rect
         (Color => Transparent,
-         Area  => ((X      => Area.Position.X,
-                    Y      => Area.Position.Y),
-                   Width  => Area.Width,
-                   Height => Area.Height));
+         X      => Area.X,
+         Y      => Area.Y,
+         Width  => Area.Width,
+         Height => Area.Height);
       Draw_String
-        (Buf1.all,
+        (Buf1,
          Area       => Area,
          Msg        => Img (Img'First + 1 .. Img'Last),
          Font       => Game.Times,
@@ -397,16 +405,16 @@ package body Status is
 
       if Score >= G_High_Score then
          G_High_Score := Score;
-         AreaH.Position := (High_Area.Position.X + 10,
-                            High_Area.Position.Y + High_Area.Height / 3 + 2);
          Copy_Rect
-           (Buf1.all,
-            Area.Position,
-            Buf1.all,
-            AreaH.Position,
-            Area.Width,
-            Area.Height,
-            False);
+           (Src_Buffer  => Buf1,
+            X_Src       => Area.X,
+            Y_Src       => Area.Y,
+            Dst_Buffer  => Buf1,
+            X_Dst       => High_Area.X + 10,
+            Y_Dst       => High_Area.Y + High_Area.Height / 3 + 2,
+            Width       => Area.Width,
+            Height      => Area.Height,
+            Synchronous => False);
       end if;
    end Set_Score;
 

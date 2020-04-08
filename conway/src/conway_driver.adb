@@ -154,7 +154,8 @@ package body Conway_Driver is
 
    G, G2, Tmp : Grid_Access;
 
-   subtype Color_Mode is HAL.Framebuffer.FB_Color_Mode range ARGB_8888 .. AL_88;
+   subtype Color_Mode is
+     HAL.Framebuffer.FB_Color_Mode range ARGB_8888 .. AL_88;
 
    Format : constant Color_Mode := RGB_565;
    Colors : constant array (Cell_State) of UInt32 :=

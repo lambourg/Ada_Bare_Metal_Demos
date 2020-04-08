@@ -1,13 +1,12 @@
-with "../drivers/boards/stm32f746_discovery.gpr";
-with "../common/common_stm32";
+with "../drivers/boards/stm32f746disco.gpr";
 
 project Conway_STM32F746Disco extends "../common/common.gpr" is
 
-   for Target use STM32F746_Discovery'Target;
-   for Runtime ("Ada") use STM32F746_Discovery'Runtime("Ada");
+   for Target use STM32F746Disco'Target;
+   for Runtime ("Ada") use STM32F746Disco'Runtime("Ada");
    for Object_Dir use "obj/stm32f746disco";
 
    for Main use ("conway_demo.adb");
-   for Source_Dirs use ("src") & Common_STM32.Sources;
+   for Source_Dirs use ("src");
 
 end Conway_STM32F746Disco;

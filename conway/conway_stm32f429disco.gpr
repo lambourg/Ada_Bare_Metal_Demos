@@ -1,5 +1,4 @@
 with "../drivers/boards/stm32f429disco.gpr";
-with "../common/common_stm32";
 
 project Conway_STM32F429Disco extends "../common/common.gpr" is
 
@@ -10,6 +9,6 @@ project Conway_STM32F429Disco extends "../common/common.gpr" is
    for Exec_Dir use project'Object_Dir;
 
    for Main use ("conway_demo.adb");
-   for Source_Dirs use ("src") & Common_STM32.Sources;
+   for Source_Dirs use ("src");
 
 end Conway_STM32F429Disco;

@@ -51,9 +51,10 @@ package Bitmapped_Drawing is
      is ((P1.X - P2.X, P1.Y - P2.Y));
 
    type Rect is record
-      Position : Point;
-      Width    : Natural;
-      Height   : Natural;
+      X      : Natural;
+      Y      : Natural;
+      Width  : Natural;
+      Height : Natural;
    end record;
 
    procedure Draw_Line
@@ -160,4 +161,3 @@ package Bitmapped_Drawing is
       Fast       : Boolean := True);
 
 end Bitmapped_Drawing;
-

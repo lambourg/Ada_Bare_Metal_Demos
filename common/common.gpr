@@ -2,15 +2,25 @@ with "../drivers/hal/config";
 
 project Common is
 
---     type LOADER_Type is
---        ("RAM", "ROM");
---     LOADER : LOADER_Type := external ("LOADER", "ROM");
+   type Build_Type is ("Debug", "Production");
+   Build : Build_Type := external ("PLATFORM_BUILD", "Debug");
 
    for Languages use ("Ada");
-   for Target use "arm-eabi";
    for Source_Dirs use ("gui");
 
-   package Compiler renames Config.Compiler;
+   package Compiler is
+      case Build is
+         when "Production" =>
+            for Default_Switches ("Ada") use
+              ("-g", "-O2", "-gnatp", "-gnatn");
+         when "Debug" =>
+            for Default_Switches ("Ada") use
+              ("-g", "-O0", "-gnata", "-gnatwae");
+      end case;
+      for Default_Switches ("ada") use Compiler'Default_Switches ("Ada") &
+        ("-gnaty", "-ffunction-sections", "-fdata-sections",
+         "-fcallgraph-info=su");
+   end Compiler;
 
    package Linker is
       for Default_Switches ("Ada") use

@@ -1,14 +1,12 @@
-with "../drivers/boards/stm32f746_discovery.gpr";
-with "../common/common_stm32";
+with "../drivers/boards/stm32f746disco.gpr";
 
 project Wolf_STM32F746Disco extends "wolf_common" is
 
-   for Target use STM32F746_Discovery'Target;
-   for Runtime ("Ada") use STM32F746_Discovery'Runtime("Ada");
+   for Target use STM32F746Disco'Target;
+   for Runtime ("Ada") use STM32F746Disco'Runtime("Ada");
    for Source_Dirs use
      Project'Source_Dirs &
-     ("src/stm32") &
-     Common_Stm32.Sources;
+     ("src/stm32");
    for Object_Dir use "obj/stm32f746disco";
 
    for Main use ("wolf_demo.adb");

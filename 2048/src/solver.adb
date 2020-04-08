@@ -28,11 +28,13 @@
 --  Adapted to Ada and restricted targets, but the core of the algo and the
 --  constants are directly taken from there.
 
+with Interfaces;                        use Interfaces;
+
 with Ada.Containers.Hashed_Maps;
 with Ada.Unchecked_Conversion;
 with Ada.Numerics.Elementary_Functions; use Ada.Numerics.Elementary_Functions;
 
-with HAL; use HAL;
+with HAL;                               use HAL;
 
 with Malloc;
 
@@ -441,9 +443,9 @@ package body Solver is
    begin
       Ret :=
         (Row_12 => UInt32 (Row_Left_Table (To_UInt16 (Board (1))))
-           or Shift_Left (UInt32 (Row_Left_Table (To_UInt16 (Board (2)))), 16),
+          or Shift_Left (UInt32 (Row_Left_Table (To_UInt16 (Board (2)))), 16),
          Row_34 => UInt32 (Row_Left_Table (To_UInt16 (Board (3))))
-           or Shift_Left (UInt32 (Row_Left_Table (To_UInt16 (Board (4)))), 16));
+          or Shift_Left (UInt32 (Row_Left_Table (To_UInt16 (Board (4)))), 16));
 
       return To_Board (Ret);
    end Move_Left;

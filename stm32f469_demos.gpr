@@ -1,7 +1,7 @@
 aggregate project STM32F469_Demos is
 
    type RTS_Profile_Type is ("ravenscar-sfp", "ravenscar-full");
-   RTS_Profile : RTS_Profile_Type := external ("RTS_Profile", "ravenscar-sfp");
+   RTS_Profile : RTS_Profile_Type := external ("RTS", "ravenscar-sfp");
 
    type BUILD_TYPE is ("Debug", "Production");
    Build : BUILD_Type := external ("PLATFORM_BUILD", "Debug");
@@ -9,7 +9,7 @@ aggregate project STM32F469_Demos is
    for Target use "arm-eabi";
    for Runtime ("Ada") use RTS_Profile & "-stm32f469disco";
 
-   for External ("RTS_Profile") use RTS_Profile;
+   for External ("RTS") use RTS_Profile;
    for External ("PLATFORM_BUILD") use Build;
 
    for Project_Files use

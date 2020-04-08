@@ -1,5 +1,4 @@
 with "../drivers/boards/rpi3";
-with "../common/common";
 
 project SDCard_RPI3 is
 
